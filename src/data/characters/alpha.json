@@ -1,0 +1,65 @@
+{
+  "id": "alpha",
+  "displayName": "Aurelia Voss",
+  "codename": "ALPHA",
+  "title": "First Blade of Nocturne",
+  "rarity": "Legendary",
+  "role": "Sword DPS / Leader",
+  "visuals": {
+    "primary": "#1e1b4b",
+    "secondary": "#f8fafc",
+    "accent": "#a78bfa"
+  },
+  "baseStats": {
+    "maxHealth": 390,
+    "attack": 44,
+    "defense": 14,
+    "speed": 7.0,
+    "critChance": 0.1,
+    "shadowGainMultiplier": 0.92
+  },
+  "skills": [
+    {
+      "id": "alpha-rush",
+      "name": "Royal Rush",
+      "slot": 1,
+      "cooldown": 4.0,
+      "damageMultiplier": 2.0,
+      "radius": 3.0,
+      "range": 6,
+      "shadowGain": 10,
+      "description": "Dash forward with disciplined sword flurries."
+    },
+    {
+      "id": "aerial-edict",
+      "name": "Aerial Edict",
+      "slot": 2,
+      "cooldown": 7.0,
+      "damageMultiplier": 1.7,
+      "radius": 4.2,
+      "range": 5,
+      "shadowGain": 12,
+      "description": "Launch enemies with a rising commander slash."
+    },
+    {
+      "id": "leader-counter",
+      "name": "Leader Counter",
+      "slot": 3,
+      "cooldown": 10.0,
+      "damageMultiplier": 1.1,
+      "radius": 3.4,
+      "range": 0,
+      "shadowGain": 10,
+      "description": "Guard briefly, then answer with a leadership shockwave."
+    }
+  ],
+  "ultimate": {
+    "id": "sword-storm-command",
+    "name": "Sword Storm Command",
+    "cooldown": 18,
+    "damageMultiplier": 5.8,
+    "radius": 18,
+    "line": "Formation complete. Let the storm kneel.",
+    "description": "A command slash that rains spectral blades around the active battlefield."
+  }
+}

@@ -1,0 +1,2611 @@
+import { App as CapacitorApp } from '@capacitor/app';
+import * as THREE from 'three';
+import { AudioEngine } from './audio';
+import { characters, defaultParty, enemies, missions, protagonist, weapons } from './content';
+import {
+  SHADOW_POWER_MAX,
+  addShadowPower,
+  applyXp,
+  clamp,
+  computeDamage,
+  deriveStats,
+  formatCooldown,
+  levelXpRequirement,
+  upgradeGoldCost
+} from './systems/combat';
+import { SaveManager, createNewSave } from './systems/save';
+import type { CharacterData, EnemyAIStyle, EnemyData, GameScreen, MissionData, MissionStep, MissionReward, PlayerProfile, SaveData, Stats, WeaponData } from './types';
+
+const ARENA_LIMIT = 21;
+const PLAYER_RADIUS = 0.85;
+
+type InputAction = 'attack' | 'skill1' | 'skill2' | 'skill3' | 'dodge' | 'ultimate';
+
+type UIAction =
+  | 'new-game'
+  | 'continue'
+  | 'story'
+  | 'characters'
+  | 'weapons'
+  | 'inventory'
+  | 'map'
+  | 'missions'
+  | 'garden'
+  | 'dungeon'
+  | 'arena'
+  | 'archive'
+  | 'settings'
+  | 'help'
+  | 'menu'
+  | 'intro-next'
+  | 'intro-skip'
+  | 'open-upgrade'
+  | 'start-second'
+  | 'save-menu'
+  | 'retry'
+  | 'start-dungeon'
+  | 'start-arena'
+  | 'start-training'
+  | 'upgrade-attack'
+  | 'upgrade-vitality'
+  | 'upgrade-shadow'
+  | 'toggle-shake'
+  | 'toggle-motion'
+  | 'toggle-fps'
+  | 'toggle-graphics';
+
+interface PlayerEntity {
+  object: THREE.Group;
+  hp: number;
+  maxHp: number;
+  radius: number;
+  cooldowns: Map<string, number>;
+  attackReadyAt: number;
+  invulnerableUntil: number;
+  dodgeUntil: number;
+  dodgeVelocity: THREE.Vector3;
+  barrierUntil: number;
+  shadowPower: number;
+  combo: number;
+  comboExpiresAt: number;
+  facing: number;
+  stats: Stats;
+}
+
+interface PendingAttack {
+  impactAt: number;
+  radius: number;
+  damage: number;
+  label: string;
+  color: string;
+}
+
+interface EnemyEntity {
+  id: string;
+  data: EnemyData;
+  object: THREE.Group;
+  hp: number;
+  maxHp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  radius: number;
+  stagger: number;
+  staggerMax: number;
+  xpReward: number;
+  goldReward: number;
+  aiStyle: EnemyAIStyle;
+  attackReadyAt: number;
+  abilityReadyAt: number;
+  stunnedUntil: number;
+  pendingAttack?: PendingAttack;
+  alive: boolean;
+  bossPhase: number;
+  abilityIndex: number;
+}
+
+interface ProjectileEntity {
+  object: THREE.Mesh;
+  velocity: THREE.Vector3;
+  damage: number;
+  radius: number;
+  life: number;
+  from: 'enemy' | 'player';
+  color: string;
+}
+
+interface EffectEntity {
+  object: THREE.Object3D;
+  life: number;
+  maxLife: number;
+  velocity?: THREE.Vector3;
+  expand?: number;
+  fade?: boolean;
+}
+
+interface DamageLabel {
+  element: HTMLDivElement;
+  world: THREE.Vector3;
+  life: number;
+  maxLife: number;
+  lift: number;
+}
+
+interface RuntimeRefs {
+  sceneHost: HTMLDivElement;
+  overlay: HTMLDivElement;
+  hud: HTMLDivElement;
+  touchControls: HTMLDivElement;
+  damageLayer: HTMLDivElement;
+  healthFill: HTMLSpanElement;
+  shadowFill: HTMLSpanElement;
+  xpFill: HTMLSpanElement;
+  activeCodename: HTMLDivElement;
+  activeName: HTMLElement;
+  playerLevel: HTMLSpanElement;
+  playerGold: HTMLSpanElement;
+  playerXp: HTMLSpanElement;
+  objectiveCopy: HTMLParagraphElement;
+  bossPanel: HTMLDivElement;
+  bossName: HTMLSpanElement;
+  bossPhase: HTMLSpanElement;
+  bossFill: HTMLSpanElement;
+  comboBadge: HTMLDivElement;
+  toast: HTMLDivElement;
+  joystickZone: HTMLDivElement;
+  joystickThumb: HTMLDivElement;
+  minimapGrid: HTMLDivElement;
+  partyBar: HTMLDivElement;
+  actionButtons: Map<InputAction, HTMLButtonElement>;
+}
+
+export class ShadowRequiemGame {
+  private readonly root: HTMLElement;
+  private readonly saveManager = new SaveManager();
+  private readonly audio = new AudioEngine();
+  private saveData: SaveData;
+  private profile: PlayerProfile;
+  private refs!: RuntimeRefs;
+  private scene!: THREE.Scene;
+  private camera!: THREE.PerspectiveCamera;
+  private renderer!: THREE.WebGLRenderer;
+  private clock = new THREE.Clock();
+  private player!: PlayerEntity;
+  private enemies: EnemyEntity[] = [];
+  private projectiles: ProjectileEntity[] = [];
+  private effects: EffectEntity[] = [];
+  private damageLabels: DamageLabel[] = [];
+  private screen: GameScreen = 'menu';
+  private currentMission: MissionData | null = null;
+  private currentStepIndex = -1;
+  private currentObjective = 'Awaiting mission.';
+  private waveAdvanceAt = 0;
+  private waypointMarker: THREE.Group | null = null;
+  private activeBoss: EnemyEntity | null = null;
+  private cameraYaw = Math.PI;
+  private cameraPitch = 0.34;
+  private cameraShake = 0;
+  private joystickPointerId: number | null = null;
+  private lookPointerId: number | null = null;
+  private lastLookX = 0;
+  private lastLookY = 0;
+  private moveInput = new THREE.Vector2();
+  private readonly keys = new Set<string>();
+  private animationFrame = 0;
+  private introIndex = 0;
+  private ultimateImpactAt = 0;
+  private ultimateEndsAt = 0;
+  private ultimateDidImpact = false;
+  private lastFrameSecond = 0;
+  private enemySerial = 0;
+  private partySwipeStartX = 0;
+  private partySwipePointerId: number | null = null;
+  private readonly achievementCatalog: Record<string, string> = {
+    firstBlood: 'First Blood',
+    perfectDodge: 'Perfect Dodge',
+    shadowAwakening: 'Shadow Awakening',
+    sevenCommanders: 'Seven Commanders',
+    bossDestroyer: 'Boss Destroyer',
+    dungeonMaster: 'Dungeon Master',
+    ultimateFinish: 'Ultimate Finish'
+  };
+  private readonly introLines = [
+    {
+      kicker: 'Underground Chamber',
+      title: 'Whispers Beneath a Ruined Kingdom',
+      copy: 'Black particles drift through a sealed arena. A voice from the Eclipse Order calls the subject incomplete. The subject opens his eyes and smiles.'
+    },
+    {
+      kicker: 'Civilian Identity',
+      title: 'Noctis Veyr',
+      copy: 'To the world he is ordinary, unserious, and forgettable. In the dark, he is the impossible answer to an experiment that should never have awakened.'
+    },
+    {
+      kicker: 'Shadow Identity',
+      title: 'Every Legend Begins in the Darkness',
+      copy: 'The first mission teaches movement, sword combat, dodge timing, shadow skills, and the Eclipse Requiem ultimate against a boss with four phases.'
+    }
+  ];
+
+  constructor(root: HTMLElement) {
+    this.root = root;
+    this.saveData = this.saveManager.load() ?? createNewSave();
+    this.profile = this.saveData.profile;
+    this.buildShell();
+    this.setupThree();
+    this.bindEvents();
+    this.showMenu();
+    this.animationFrame = window.requestAnimationFrame((time) => this.loop(time));
+  }
+
+  destroy(): void {
+    window.cancelAnimationFrame(this.animationFrame);
+    this.renderer.dispose();
+    this.root.innerHTML = '';
+  }
+
+  private getActiveCharacter(): CharacterData {
+    return characters[this.profile.activeCharacterId] ?? protagonist;
+  }
+
+  private getActiveParty(): CharacterData[] {
+    const partyIds = this.profile.activeParty?.length ? this.profile.activeParty : defaultParty;
+    return partyIds.map((id) => characters[id]).filter(Boolean);
+  }
+
+  private getActiveWeapon(): WeaponData {
+    return weapons[this.profile.equippedWeaponId] ?? weapons['nocturne-katana'];
+  }
+
+  private getComputedStats(character = this.getActiveCharacter()): Stats {
+    const stats = deriveStats(character.baseStats, this.profile.level, this.profile.upgrades);
+    const weapon = this.getActiveWeapon();
+    return {
+      ...stats,
+      attack: stats.attack + weapon.attackBonus,
+      shadowGainMultiplier: weapon.id === 'null-requiem' ? stats.shadowGainMultiplier + 0.18 : stats.shadowGainMultiplier
+    };
+  }
+
+  private buildShell(): void {
+    this.root.innerHTML = `
+      <main class="game-shell">
+        <div id="sceneHost" class="scene-host" aria-label="3D tutorial arena"></div>
+        <div class="vignette" aria-hidden="true"></div>
+        <div id="damageLayer" class="damage-layer" aria-hidden="true"></div>
+
+        <section id="hud" class="hud hidden" aria-label="Combat HUD">
+          <div class="hud-top">
+            <div class="player-panel glass-panel">
+              <div class="player-name-row">
+                <div>
+                  <div id="activeCodename" class="codename">SHADOW</div>
+                  <strong id="activeName">Noctis Veyr</strong>
+                </div>
+                <span id="playerLevel" class="level-chip">LV 1</span>
+              </div>
+              <div class="bar-stack" aria-hidden="true">
+                <div class="bar"><span id="healthFill" class="health-fill"></span></div>
+                <div class="bar"><span id="shadowFill" class="shadow-fill"></span></div>
+                <div class="bar"><span id="xpFill" class="xp-fill"></span></div>
+              </div>
+              <div class="resource-row">
+                <span id="playerXp">XP 0 / 144</span>
+                <span id="playerGold">GOLD 0</span>
+              </div>
+            </div>
+
+            <div class="objective-panel glass-panel" role="status" aria-live="polite">
+              <p class="objective-title">Mission Objective</p>
+              <p id="objectiveCopy" class="objective-copy">Awaiting mission.</p>
+            </div>
+
+            <div class="minimap glass-panel" aria-label="Arena mini map">
+              <div id="minimapGrid" class="minimap-grid"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="bossPanel" class="boss-panel glass-panel hidden" aria-label="Boss status">
+          <div class="boss-title-row">
+            <span id="bossName" class="boss-name">Boss</span>
+            <span id="bossPhase" class="phase-chip">Phase 1</span>
+          </div>
+          <div class="bar boss-bar" aria-hidden="true"><span id="bossFill" class="boss-fill"></span></div>
+        </section>
+
+        <div id="comboBadge" class="combo-badge glass-panel hidden" aria-live="polite">0 HIT</div>
+        <div id="toast" class="toast glass-panel hidden" role="status" aria-live="polite"></div>
+        <div id="partyBar" class="party-bar glass-panel hidden" aria-label="Character switch portraits"></div>
+
+        <section id="touchControls" class="touch-controls hidden" aria-label="Touch combat controls">
+          <div id="joystickZone" class="joystick-zone" aria-label="Virtual joystick" role="application">
+            <div class="joystick-ring"><div id="joystickThumb" class="joystick-thumb"></div></div>
+          </div>
+          <div class="action-cluster">
+            <button class="action-button primary" type="button" data-action="attack" aria-label="Normal sword attack">Attack</button>
+            <button class="action-button" type="button" data-action="skill1" aria-label="Skill 1 Shadow Step">Step<span class="cooldown-label" hidden></span></button>
+            <button class="action-button" type="button" data-action="skill2" aria-label="Skill 2 Umbral Bloom">Bloom<span class="cooldown-label" hidden></span></button>
+            <button class="action-button" type="button" data-action="skill3" aria-label="Skill 3 Nocturne Barrier">Guard<span class="cooldown-label" hidden></span></button>
+            <button class="action-button" type="button" data-action="dodge" aria-label="Dodge">Dodge<span class="cooldown-label" hidden></span></button>
+            <button class="action-button ultimate" type="button" data-action="ultimate" aria-label="Ultimate Eclipse Requiem">Ultimate<span class="cooldown-label" hidden></span></button>
+          </div>
+        </section>
+
+        <section id="overlay" class="overlay" aria-label="Game screens"></section>
+      </main>
+    `;
+
+    const qs = <T extends HTMLElement>(selector: string): T => {
+      const element = this.root.querySelector<T>(selector);
+      if (!element) throw new Error(`Missing UI element: ${selector}`);
+      return element;
+    };
+
+    const actionButtons = new Map<InputAction, HTMLButtonElement>();
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-action]')) {
+      actionButtons.set(button.dataset.action as InputAction, button);
+    }
+
+    this.refs = {
+      sceneHost: qs<HTMLDivElement>('#sceneHost'),
+      overlay: qs<HTMLDivElement>('#overlay'),
+      hud: qs<HTMLDivElement>('#hud'),
+      touchControls: qs<HTMLDivElement>('#touchControls'),
+      damageLayer: qs<HTMLDivElement>('#damageLayer'),
+      activeCodename: qs<HTMLDivElement>('#activeCodename'),
+      activeName: qs<HTMLElement>('#activeName'),
+      healthFill: qs<HTMLSpanElement>('#healthFill'),
+      shadowFill: qs<HTMLSpanElement>('#shadowFill'),
+      xpFill: qs<HTMLSpanElement>('#xpFill'),
+      playerLevel: qs<HTMLSpanElement>('#playerLevel'),
+      playerGold: qs<HTMLSpanElement>('#playerGold'),
+      playerXp: qs<HTMLSpanElement>('#playerXp'),
+      objectiveCopy: qs<HTMLParagraphElement>('#objectiveCopy'),
+      bossPanel: qs<HTMLDivElement>('#bossPanel'),
+      bossName: qs<HTMLSpanElement>('#bossName'),
+      bossPhase: qs<HTMLSpanElement>('#bossPhase'),
+      bossFill: qs<HTMLSpanElement>('#bossFill'),
+      comboBadge: qs<HTMLDivElement>('#comboBadge'),
+      toast: qs<HTMLDivElement>('#toast'),
+      joystickZone: qs<HTMLDivElement>('#joystickZone'),
+      joystickThumb: qs<HTMLDivElement>('#joystickThumb'),
+      minimapGrid: qs<HTMLDivElement>('#minimapGrid'),
+      partyBar: qs<HTMLDivElement>('#partyBar'),
+      actionButtons
+    };
+  }
+
+  private setupThree(): void {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color('#070713');
+    this.scene.fog = new THREE.Fog('#070713', 20, 56);
+
+    this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 100);
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.updateRendererQuality();
+    this.refs.sceneHost.appendChild(this.renderer.domElement);
+
+    const ambient = new THREE.HemisphereLight('#b8a7ff', '#10040f', 1.35);
+    this.scene.add(ambient);
+
+    const key = new THREE.DirectionalLight('#ffffff', 1.6);
+    key.position.set(-6, 10, 8);
+    key.castShadow = true;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 50;
+    key.shadow.camera.left = -24;
+    key.shadow.camera.right = 24;
+    key.shadow.camera.top = 24;
+    key.shadow.camera.bottom = -24;
+    this.scene.add(key);
+
+    const rim = new THREE.PointLight('#7c3aed', 42, 30);
+    rim.position.set(0, 6, -8);
+    this.scene.add(rim);
+
+    this.createArena();
+    this.createWaypointMarker();
+    this.createPlayer();
+    this.resize();
+  }
+
+  private bindEvents(): void {
+    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('beforeunload', () => this.persist());
+    window.addEventListener('keydown', (event) => {
+      if (event.repeat) return;
+      this.keys.add(event.code);
+      if (event.code === 'Space') this.handleInputAction('dodge');
+      if (event.code === 'KeyJ' || event.code === 'Enter') this.handleInputAction('attack');
+      if (event.code === 'KeyK') this.handleInputAction('skill1');
+      if (event.code === 'KeyL') this.handleInputAction('skill2');
+      if (event.code === 'KeyI') this.handleInputAction('skill3');
+      if (event.code === 'KeyU') this.handleInputAction('ultimate');
+      if (event.code === 'KeyQ') this.switchPartyRelative(-1);
+      if (event.code === 'KeyE') this.switchPartyRelative(1);
+      if (event.code === 'Escape' && this.screen === 'playing') this.showMenu();
+    });
+    window.addEventListener('keyup', (event) => this.keys.delete(event.code));
+    window.addEventListener('contextmenu', (event) => event.preventDefault());
+    void CapacitorApp.addListener('backButton', () => {
+      if (this.screen === 'playing') {
+        this.showMenu('Paused from Android back button. Continue resumes the mission checkpoint.');
+        return;
+      }
+      if (this.screen !== 'menu') {
+        this.showMenu();
+        return;
+      }
+      void CapacitorApp.exitApp();
+    }).catch(() => undefined);
+
+    for (const [action, button] of this.refs.actionButtons) {
+      button.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        button.classList.add('pressed');
+        void this.handleInputAction(action);
+      });
+      button.addEventListener('pointerup', () => button.classList.remove('pressed'));
+      button.addEventListener('pointercancel', () => button.classList.remove('pressed'));
+      button.addEventListener('pointerleave', () => button.classList.remove('pressed'));
+    }
+
+    this.refs.overlay.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      const button = target.closest<HTMLButtonElement>('[data-ui-action], [data-mission-id], [data-character-id], [data-equip-weapon-id], [data-craft-weapon-id], [data-room-id]');
+      if (!button || button.disabled) return;
+      if (button.dataset.missionId) {
+        this.startMission(button.dataset.missionId);
+        return;
+      }
+      if (button.dataset.characterId) {
+        this.setActiveCharacter(button.dataset.characterId, true);
+        return;
+      }
+      if (button.dataset.equipWeaponId) {
+        this.equipWeapon(button.dataset.equipWeaponId);
+        return;
+      }
+      if (button.dataset.craftWeaponId) {
+        this.craftWeapon(button.dataset.craftWeaponId);
+        return;
+      }
+      if (button.dataset.roomId) {
+        this.showGardenRoom(button.dataset.roomId);
+        return;
+      }
+      const action = button.dataset.uiAction as UIAction;
+      void this.handleUIAction(action);
+    });
+
+    this.refs.partyBar.addEventListener('click', (event) => {
+      if (this.screen !== 'playing') return;
+      const target = event.target as HTMLElement;
+      const button = target.closest<HTMLButtonElement>('[data-party-index]');
+      if (!button) return;
+      this.switchPartyTo(Number(button.dataset.partyIndex));
+    });
+    this.refs.partyBar.addEventListener('pointerdown', (event) => {
+      this.partySwipePointerId = event.pointerId;
+      this.partySwipeStartX = event.clientX;
+    });
+    this.refs.partyBar.addEventListener('pointerup', (event) => {
+      if (event.pointerId !== this.partySwipePointerId) return;
+      const deltaX = event.clientX - this.partySwipeStartX;
+      this.partySwipePointerId = null;
+      if (Math.abs(deltaX) > 44) this.switchPartyRelative(deltaX < 0 ? 1 : -1);
+    });
+
+    this.refs.joystickZone.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      this.joystickPointerId = event.pointerId;
+      this.refs.joystickZone.setPointerCapture(event.pointerId);
+      this.updateJoystick(event.clientX, event.clientY);
+    });
+    this.refs.joystickZone.addEventListener('pointermove', (event) => {
+      if (event.pointerId !== this.joystickPointerId) return;
+      this.updateJoystick(event.clientX, event.clientY);
+    });
+    const endJoystick = (event: PointerEvent): void => {
+      if (event.pointerId !== this.joystickPointerId) return;
+      this.joystickPointerId = null;
+      this.moveInput.set(0, 0);
+      this.refs.joystickThumb.style.transform = 'translate(-50%, -50%)';
+    };
+    this.refs.joystickZone.addEventListener('pointerup', endJoystick);
+    this.refs.joystickZone.addEventListener('pointercancel', endJoystick);
+
+    this.refs.sceneHost.addEventListener('pointerdown', (event) => {
+      if (this.screen !== 'playing') return;
+      this.lookPointerId = event.pointerId;
+      this.lastLookX = event.clientX;
+      this.lastLookY = event.clientY;
+      this.refs.sceneHost.setPointerCapture(event.pointerId);
+    });
+    this.refs.sceneHost.addEventListener('pointermove', (event) => {
+      if (event.pointerId !== this.lookPointerId || this.screen !== 'playing') return;
+      const sensitivity = this.profile.settings.cameraSensitivity;
+      const dx = event.clientX - this.lastLookX;
+      const dy = event.clientY - this.lastLookY;
+      this.lastLookX = event.clientX;
+      this.lastLookY = event.clientY;
+      this.cameraYaw -= dx * 0.0045 * sensitivity;
+      this.cameraPitch = clamp(this.cameraPitch + dy * 0.0022 * sensitivity, 0.12, 0.72);
+    });
+    const endLook = (event: PointerEvent): void => {
+      if (event.pointerId === this.lookPointerId) this.lookPointerId = null;
+    };
+    this.refs.sceneHost.addEventListener('pointerup', endLook);
+    this.refs.sceneHost.addEventListener('pointercancel', endLook);
+  }
+
+  private async handleUIAction(action: UIAction): Promise<void> {
+    await this.audio.resume();
+    this.audio.click();
+    this.audio.startMusic('menu');
+
+    switch (action) {
+      case 'new-game':
+        this.startNewGame();
+        break;
+      case 'continue':
+        this.continueGame();
+        break;
+      case 'story':
+      case 'missions':
+        this.showMissionsScreen();
+        break;
+      case 'characters':
+        this.showCharacterScreen();
+        break;
+      case 'weapons':
+      case 'inventory':
+        this.showInventoryScreen();
+        break;
+      case 'map':
+        this.showMapScreen();
+        break;
+      case 'garden':
+        this.showGardenScreen();
+        break;
+      case 'dungeon':
+        this.showDungeonScreen();
+        break;
+      case 'arena':
+        this.showArenaScreen();
+        break;
+      case 'archive':
+        this.showArchiveScreen();
+        break;
+      case 'settings':
+        this.showSettings();
+        break;
+      case 'help':
+        this.showHelp();
+        break;
+      case 'menu':
+        this.persist();
+        this.showMenu();
+        break;
+      case 'intro-next':
+        this.advanceIntro();
+        break;
+      case 'intro-skip':
+        this.startMission('awakening');
+        break;
+      case 'open-upgrade':
+        this.showCharacterScreen();
+        break;
+      case 'start-second':
+        this.startMission('shadow-trace');
+        break;
+      case 'save-menu':
+        this.persist();
+        this.showMenu('Progress saved. Continue resumes from your latest unlocked mission.');
+        break;
+      case 'retry':
+        if (this.currentMission?.id === 'abyss-dungeon-run') this.startGeneratedMission('dungeon');
+        else if (this.currentMission?.id === 'arena-boss-rush') this.startGeneratedMission('arena');
+        else if (this.currentMission?.id === 'training-simulation') this.startGeneratedMission('training');
+        else this.startMission(this.currentMission?.id ?? this.profile.lastMissionId ?? 'awakening');
+        break;
+      case 'start-dungeon':
+        this.startGeneratedMission('dungeon');
+        break;
+      case 'start-arena':
+        this.startGeneratedMission('arena');
+        break;
+      case 'start-training':
+        this.startGeneratedMission('training');
+        break;
+      case 'upgrade-attack':
+        this.purchaseUpgrade('attack');
+        break;
+      case 'upgrade-vitality':
+        this.purchaseUpgrade('vitality');
+        break;
+      case 'upgrade-shadow':
+        this.purchaseUpgrade('shadow');
+        break;
+      case 'toggle-shake':
+        this.profile.settings.screenShake = !this.profile.settings.screenShake;
+        this.persist();
+        this.showSettings();
+        break;
+      case 'toggle-motion':
+        this.profile.settings.reducedMotion = !this.profile.settings.reducedMotion;
+        this.persist();
+        this.showSettings();
+        break;
+      case 'toggle-fps':
+        this.profile.settings.fpsCap = this.profile.settings.fpsCap === 60 ? 30 : 60;
+        this.persist();
+        this.showSettings();
+        break;
+      case 'toggle-graphics':
+        this.cycleGraphicsPreset();
+        this.persist();
+        this.showSettings();
+        break;
+      default:
+        action satisfies never;
+    }
+  }
+
+  private async handleInputAction(action: InputAction): Promise<void> {
+    if (this.screen !== 'playing') return;
+    await this.audio.resume();
+    this.audio.startMusic(this.activeBoss?.aiStyle === 'boss' ? 'boss' : 'battle');
+
+    switch (action) {
+      case 'attack':
+        this.basicAttack();
+        break;
+      case 'skill1':
+        this.useSkill(0);
+        break;
+      case 'skill2':
+        this.useSkill(1);
+        break;
+      case 'skill3':
+        this.useSkill(2);
+        break;
+      case 'dodge':
+        this.dodge();
+        break;
+      case 'ultimate':
+        this.useUltimate();
+        break;
+      default:
+        action satisfies never;
+    }
+  }
+
+  private showMenu(message?: string): void {
+    this.screen = 'menu';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    const loadedSave = this.saveManager.load();
+    const hasSave = loadedSave !== null;
+    if (loadedSave) {
+      this.saveData = loadedSave;
+      this.profile = loadedSave.profile;
+    }
+
+    const continueLabel = this.profile.completedMissions.includes('awakening') ? 'Continue: Shadow Trace' : 'Continue: Awakening';
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="menu-kicker">Android-first vertical slice v0.1.0</div>
+        <h1 class="logo-title">Shadow <span>Requiem</span></h1>
+        <p class="screen-copy">A playable dark anime action RPG MVP: main menu, cinematic intro, tutorial arena, sword combat, dodge, three shadow skills, ultimate, three enemy types, mini-boss, major boss, rewards, upgrades, and secure local save/load.</p>
+        ${message ? `<p class="ultimate-line">${message}</p>` : ''}
+        <ul class="feature-list" aria-label="Implemented MVP features">
+          <li>Third-person arena camera</li>
+          <li>Touch joystick and combat buttons</li>
+          <li>Original procedural audio and VFX</li>
+          <li>Data-driven characters, enemies, missions</li>
+        </ul>
+        <div class="menu-actions full-shell-actions">
+          <button class="menu-button" type="button" data-ui-action="new-game">New Game</button>
+          <button class="menu-button" type="button" data-ui-action="continue" ${hasSave ? '' : 'disabled'}>${continueLabel}</button>
+          <button class="menu-button" type="button" data-ui-action="story">Story</button>
+          <button class="menu-button" type="button" data-ui-action="characters">Characters</button>
+          <button class="menu-button" type="button" data-ui-action="weapons">Weapons</button>
+          <button class="menu-button" type="button" data-ui-action="inventory">Inventory</button>
+          <button class="menu-button" type="button" data-ui-action="map">Map</button>
+          <button class="menu-button" type="button" data-ui-action="missions">Missions</button>
+          <button class="menu-button" type="button" data-ui-action="garden">Nocturne Garden</button>
+          <button class="menu-button" type="button" data-ui-action="dungeon">Abyss Dungeon</button>
+          <button class="menu-button" type="button" data-ui-action="arena">Arena</button>
+          <button class="secondary-button" type="button" data-ui-action="archive">Archive</button>
+          <button class="secondary-button" type="button" data-ui-action="help">Controls</button>
+          <button class="secondary-button" type="button" data-ui-action="settings">Settings</button>
+        </div>
+        <p class="small-note">No copyrighted anime footage, music, logos, ripped models, or extracted assets are used. All visuals are procedural prototype assets.</p>
+      </div>
+    `;
+  }
+
+  private showHelp(): void {
+    this.screen = 'menu';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="screen-kicker">Playable Controls</div>
+        <h2 class="screen-title">How to Fight</h2>
+        <p class="screen-copy">Use the virtual joystick on the left and combat buttons on the right. Drag on the arena to rotate the camera. Keyboard fallback is also implemented for desktop testing.</p>
+        <div class="reward-grid">
+          <div class="reward-line"><span>Move</span><strong>Joystick or WASD</strong></div>
+          <div class="reward-line"><span>Attack</span><strong>Attack button or J / Enter</strong></div>
+          <div class="reward-line"><span>Dodge</span><strong>Dodge button or Space</strong></div>
+          <div class="reward-line"><span>Skills</span><strong>Step K, Bloom L, Guard I</strong></div>
+          <div class="reward-line"><span>Ultimate</span><strong>Fill Shadow Power, then U</strong></div>
+        </div>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="new-game">Start New Game</button>
+          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private showMissionsScreen(): void {
+    this.screen = 'missions';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    const missionCards = Object.values(missions)
+      .map((mission) => {
+        const unlocked = this.profile.unlockedMissions.includes(mission.id);
+        const completed = this.profile.completedMissions.includes(mission.id);
+        return `
+          <article class="system-card">
+            <div class="screen-kicker">${mission.chapter}</div>
+            <h3>${mission.title}</h3>
+            <p>${mission.narrative}</p>
+            <div class="reward-line"><span>Recommended</span><strong>LV ${mission.recommendedLevel} · ${mission.difficulty}</strong></div>
+            <button class="menu-button" type="button" data-mission-id="${mission.id}" ${unlocked ? '' : 'disabled'}>${completed ? 'Replay' : unlocked ? 'Start' : 'Locked'}</button>
+          </article>
+        `;
+      })
+      .join('');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card wide-card">
+        <div class="screen-kicker">Story Command</div>
+        <h2 class="screen-title">Mission Board</h2>
+        <p class="screen-copy">Story missions are data-driven and fully launch combat objectives. Complete Chapter 1 to unlock the second mission and continue progression.</p>
+        <div class="system-grid">${missionCards}</div>
+        <h3>Daily / Challenge Contracts</h3>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="start-training">Daily Training Contract</button>
+          <button class="menu-button" type="button" data-ui-action="start-dungeon">Daily Abyss Run</button>
+          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private showMapScreen(): void {
+    this.screen = 'map';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card wide-card">
+        <div class="screen-kicker">Interconnected World Prototype</div>
+        <h2 class="screen-title">World Map</h2>
+        <p class="screen-copy">The full open world is represented as a functional node map for this build. Available nodes launch playable missions or modes; locked regions are marked as roadmap content, not fake buttons.</p>
+        <div class="world-map-panel glass-panel">
+          ${this.mapNode('Shadow City', 'HQ', 18, 54, 'garden')}
+          ${this.mapNode('Sealed Arena', 'Story', 42, 62, 'missions')}
+          ${this.mapNode('Abyss Gate', 'Dungeon', 63, 40, 'dungeon')}
+          ${this.mapNode('Capital Arena', 'Arena', 74, 70, 'arena')}
+          <span class="locked-node" style="left:28%;top:24%">Dark Forest · TODO v0.4</span>
+          <span class="locked-node" style="left:82%;top:22%">Null Dimension · TODO v0.8</span>
+        </div>
+        <div class="screen-actions"><button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button></div>
+      </div>
+    `;
+  }
+
+  private mapNode(name: string, label: string, left: number, top: number, action: UIAction): string {
+    return `<button class="map-node" type="button" data-ui-action="${action}" style="left:${left}%;top:${top}%"><strong>${name}</strong><span>${label}</span></button>`;
+  }
+
+  private showGardenScreen(): void {
+    this.screen = 'garden';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    const rooms = [
+      ['command', 'Command Center', 'Open the mission board and direct Nocturne operations.'],
+      ['training', 'Training Room', 'Launch a playable combat training simulation.'],
+      ['forge', 'Weapon Forge', 'Craft and equip working prototype weapons.'],
+      ['laboratory', 'Laboratory', 'Start an experimental abyss dungeon run.'],
+      ['library', 'Library', 'Read lore and roadmap archive entries.'],
+      ['treasury', 'Treasury', 'Inspect currencies and materials.'],
+      ['teleport', 'Teleportation Room', 'Open the functional world map nodes.'],
+      ['secret', 'Secret Chamber', 'Enter a compact boss-rush arena test.']
+    ];
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card wide-card">
+        <div class="screen-kicker">Home Base</div>
+        <h2 class="screen-title">Nocturne Garden HQ</h2>
+        <p class="screen-copy">A functional hub shell for the future headquarters. Each room routes to a working screen or playable mode so no visible control is fake.</p>
+        <div class="system-grid">${rooms.map(([id, title, copy]) => `<button class="system-card room-button" type="button" data-room-id="${id}"><h3>${title}</h3><p>${copy}</p></button>`).join('')}</div>
+        <div class="screen-actions"><button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button></div>
+      </div>
+    `;
+  }
+
+  private showGardenRoom(roomId: string): void {
+    switch (roomId) {
+      case 'command':
+        this.showMissionsScreen();
+        return;
+      case 'training':
+        this.startGeneratedMission('training');
+        return;
+      case 'forge':
+      case 'treasury':
+        this.showInventoryScreen();
+        return;
+      case 'laboratory':
+        this.showDungeonScreen();
+        return;
+      case 'library':
+        this.showArchiveScreen();
+        return;
+      case 'teleport':
+        this.showMapScreen();
+        return;
+      case 'secret':
+        this.showArenaScreen();
+        return;
+      default:
+        this.showGardenScreen();
+    }
+  }
+
+  private showInventoryScreen(): void {
+    this.screen = 'inventory';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    const materials = Object.entries(this.profile.inventory)
+      .map(([key, value]) => `<div class="character-stat"><span>${this.prettyMaterial(key)}</span><strong>${value}</strong></div>`)
+      .join('');
+    const weaponCards = Object.values(weapons)
+      .map((weapon) => {
+        const unlocked = this.profile.unlockedWeapons.includes(weapon.id);
+        const equipped = this.profile.equippedWeaponId === weapon.id;
+        const cost = this.formatCost(weapon.unlockCost);
+        return `
+          <article class="system-card weapon-card ${equipped ? 'selected-card' : ''}">
+            <div class="screen-kicker">${weapon.rarity} · ${weapon.category}</div>
+            <h3>${weapon.name}</h3>
+            <p>${weapon.passive}</p>
+            <div class="reward-line"><span>Attack Bonus</span><strong>+${weapon.attackBonus}</strong></div>
+            ${unlocked ? `<button class="menu-button" type="button" data-equip-weapon-id="${weapon.id}" ${equipped ? 'disabled' : ''}>${equipped ? 'Equipped' : 'Equip'}</button>` : `<button class="menu-button" type="button" data-craft-weapon-id="${weapon.id}" ${this.canAffordMaterials(weapon.unlockCost) ? '' : 'disabled'}>Craft · ${cost}</button>`}
+          </article>
+        `;
+      })
+      .join('');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card wide-card">
+        <div class="screen-kicker">Inventory / Forge</div>
+        <h2 class="screen-title">Weapons and Materials</h2>
+        <p class="screen-copy">Mission, dungeon, arena, and boss rewards feed this working inventory. Crafting consumes materials and equipment immediately changes combat stats.</p>
+        <h3>Materials</h3>
+        <div class="character-grid">${materials}</div>
+        <h3>Weapons</h3>
+        <div class="system-grid">${weaponCards}</div>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="characters">Open Characters</button>
+          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private showDungeonScreen(): void {
+    this.screen = 'missions';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="screen-kicker">Procedural Mode Prototype</div>
+        <h2 class="screen-title">Abyss Dungeon</h2>
+        <p class="screen-copy">Every run rolls a compact sequence of random enemy rooms, a buff objective, and a mini-boss. Future versions expand floors, traps, blessings, and nightmare modifiers.</p>
+        <div class="reward-grid">
+          <div class="reward-line"><span>Floors</span><strong>3-room prototype</strong></div>
+          <div class="reward-line"><span>Rewards</span><strong>XP, Gold, Shadow Shards</strong></div>
+          <div class="reward-line"><span>Difficulty</span><strong>Scales with level</strong></div>
+        </div>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="start-dungeon">Enter Abyss</button>
+          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private showArenaScreen(): void {
+    this.screen = 'missions';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="screen-kicker">Challenge Mode Prototype</div>
+        <h2 class="screen-title">Capital Arena</h2>
+        <p class="screen-copy">Boss Rush is functional now: survive an elite guard, mini-boss, and Eclipse Warden sequence for bonus materials. Leaderboards and matchmaking are roadmap architecture.</p>
+        <div class="reward-grid">
+          <div class="reward-line"><span>Mode</span><strong>Boss Rush</strong></div>
+          <div class="reward-line"><span>Scoring</span><strong>Completion + combo rewards</strong></div>
+          <div class="reward-line"><span>Online</span><strong>TODO: fair leaderboard service</strong></div>
+        </div>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="start-arena">Start Boss Rush</button>
+          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private showArchiveScreen(): void {
+    this.screen = 'archive';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    const unlocked = this.profile.completedMissions.includes('awakening');
+    const achievements = Object.entries(this.achievementCatalog)
+      .map(([id, name]) => `<div class="character-stat"><span>${name}</span><strong>${this.profile.achievements.includes(id) ? 'Unlocked' : 'Locked'}</strong></div>`)
+      .join('');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card wide-card">
+        <div class="screen-kicker">Library / Lore</div>
+        <h2 class="screen-title">Shadow Archive</h2>
+        <div class="system-grid">
+          <article class="system-card"><h3>The Eclipse Order</h3><p>A public myth and private machine. Their experiments awaken powers they cannot interpret.</p></article>
+          <article class="system-card"><h3>The Nocturne Garden</h3><p>A secret organization built to move faster than kingdoms, cults, and magical corporations.</p></article>
+          <article class="system-card"><h3>The Null King</h3><p>${unlocked ? 'Recovered fragment: Eclipse reports refer to a monarch who edits memory rather than territory.' : 'Locked lore: complete The Awakening to recover the first memory fragment.'}</p></article>
+          <article class="system-card"><h3>Roadmap Notice</h3><p>Open-world cities, NPC schedules, arena seasons, voice-ready dialogue, and New Game+ are planned as staged systems after combat feel is stable.</p></article>
+        </div>
+        <h3>Achievements</h3>
+        <div class="character-grid">${achievements}</div>
+        <div class="screen-actions"><button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button></div>
+      </div>
+    `;
+  }
+
+  private unlockAchievement(id: keyof ShadowRequiemGame['achievementCatalog']): void {
+    if (this.profile.achievements.includes(id)) return;
+    this.profile.achievements.push(id);
+    this.toast(`Achievement unlocked: ${this.achievementCatalog[id]}`);
+    this.persist();
+  }
+
+  private prettyMaterial(key: string): string {
+    const names: Record<string, string> = {
+      shadowShard: 'Shadow Shards',
+      eclipseCore: 'Eclipse Cores',
+      nullFragment: 'Null Fragments',
+      trainingSigil: 'Training Sigils'
+    };
+    return names[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase());
+  }
+
+  private formatCost(cost: Record<string, number>): string {
+    const entries = Object.entries(cost);
+    if (entries.length === 0) return 'Unlocked';
+    return entries.map(([key, value]) => `${value} ${this.prettyMaterial(key)}`).join(' · ');
+  }
+
+  private canAffordMaterials(cost: Record<string, number>): boolean {
+    return Object.entries(cost).every(([key, value]) => (this.profile.inventory[key] ?? 0) >= value);
+  }
+
+  private grantMaterials(materials: Record<string, number> = {}): void {
+    for (const [key, value] of Object.entries(materials)) {
+      this.profile.inventory[key] = (this.profile.inventory[key] ?? 0) + value;
+    }
+  }
+
+  private consumeMaterials(cost: Record<string, number>): void {
+    for (const [key, value] of Object.entries(cost)) {
+      this.profile.inventory[key] = Math.max(0, (this.profile.inventory[key] ?? 0) - value);
+    }
+  }
+
+  private equipWeapon(weaponId: string): void {
+    if (!weapons[weaponId] || !this.profile.unlockedWeapons.includes(weaponId)) return;
+    this.profile.equippedWeaponId = weaponId;
+    this.syncPlayerStatsFromProfile(true);
+    this.persist();
+    this.showInventoryScreen();
+  }
+
+  private craftWeapon(weaponId: string): void {
+    const weapon = weapons[weaponId];
+    if (!weapon || this.profile.unlockedWeapons.includes(weaponId) || !this.canAffordMaterials(weapon.unlockCost)) return;
+    this.consumeMaterials(weapon.unlockCost);
+    this.profile.unlockedWeapons.push(weaponId);
+    this.profile.equippedWeaponId = weaponId;
+    this.syncPlayerStatsFromProfile(true);
+    this.persist();
+    this.showInventoryScreen();
+  }
+
+  private cycleGraphicsPreset(): void {
+    const order: PlayerProfile['settings']['graphicsPreset'][] = ['LOW', 'MEDIUM', 'HIGH', 'ULTRA'];
+    const index = order.indexOf(this.profile.settings.graphicsPreset);
+    this.profile.settings.graphicsPreset = order[(index + 1) % order.length];
+    this.updateRendererQuality();
+  }
+
+  private showSettings(): void {
+    this.screen = 'settings';
+    this.setCombatUI(false);
+    const settings = this.profile.settings;
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="screen-kicker">Functional MVP Settings</div>
+        <h2 class="screen-title">Settings</h2>
+        <p class="screen-copy">Only implemented settings are shown. Expanded graphics, audio, language, privacy, accessibility, and account pages are tracked as roadmap TODOs in the README.</p>
+        <div class="settings-grid">
+          <div class="setting-row"><span>Screen Shake</span><strong>${settings.screenShake ? 'Enabled' : 'Disabled'}</strong></div>
+          <button class="secondary-button" type="button" data-ui-action="toggle-shake">Toggle Screen Shake</button>
+          <div class="setting-row"><span>Reduced Motion</span><strong>${settings.reducedMotion ? 'Enabled' : 'Disabled'}</strong></div>
+          <button class="secondary-button" type="button" data-ui-action="toggle-motion">Toggle Reduced Motion</button>
+          <div class="setting-row"><span>FPS Preference</span><strong>${settings.fpsCap} FPS</strong></div>
+          <button class="secondary-button" type="button" data-ui-action="toggle-fps">Toggle FPS Preference</button>
+          <div class="setting-row"><span>Graphics Preset</span><strong>${settings.graphicsPreset}</strong></div>
+          <button class="secondary-button" type="button" data-ui-action="toggle-graphics">Cycle Graphics Preset</button>
+        </div>
+        <div class="screen-actions">
+          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private startNewGame(): void {
+    this.saveManager.clear();
+    this.saveData = createNewSave();
+    this.profile = this.saveData.profile;
+    this.resetPlayerForMission();
+    this.introIndex = 0;
+    this.screen = 'intro';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.renderIntro();
+  }
+
+  private renderIntro(): void {
+    const line = this.introLines[this.introIndex];
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="screen-kicker">${line.kicker}</div>
+        <h2 class="screen-title">${line.title}</h2>
+        <p class="screen-copy">${line.copy}</p>
+        <div class="ultimate-line">"Every legend begins in the darkness."</div>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="intro-next">${this.introIndex === this.introLines.length - 1 ? 'Begin Tutorial' : 'Next'}</button>
+          <button class="secondary-button" type="button" data-ui-action="intro-skip">Skip to Tutorial</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private advanceIntro(): void {
+    if (this.introIndex < this.introLines.length - 1) {
+      this.introIndex += 1;
+      this.renderIntro();
+      return;
+    }
+    this.startMission('awakening');
+  }
+
+  private continueGame(): void {
+    const loaded = this.saveManager.load();
+    if (!loaded) {
+      this.showMenu('No valid save was found. Start a new game to create one.');
+      return;
+    }
+    this.saveData = loaded;
+    this.profile = loaded.profile;
+    this.startMission(this.profile.lastMissionId || 'awakening');
+  }
+
+  private startMission(missionId: string): void {
+    const mission = missions[missionId] ?? missions.awakening;
+    this.beginMission(mission, mission.id);
+  }
+
+  private startGeneratedMission(kind: 'dungeon' | 'arena' | 'training'): void {
+    const randomEnemy = () => ['shadow-cultist', 'eclipsed-arcanist', 'null-guard'][Math.floor(Math.random() * 3)];
+    const mission: MissionData = kind === 'arena'
+      ? {
+          id: 'arena-boss-rush',
+          chapter: 'Arena — Boss Rush',
+          title: 'Capital Arena: Eclipse Exhibition',
+          recommendedLevel: this.profile.level,
+          difficulty: 'Challenge',
+          narrative: 'A functional boss-rush prototype for testing elite patterns, switching, ultimate timing, and reward pacing.',
+          rewards: { xp: 180, gold: 180, skillPoints: 1, materials: { shadowShard: 6, eclipseCore: 1, nullFragment: 1 } },
+          nextMission: this.profile.lastMissionId || 'shadow-trace',
+          steps: [
+            { type: 'waypoint', objective: 'Enter the arena center.', marker: { x: 0, z: -6 } },
+            { type: 'wave', objective: 'Defeat the armored qualifier.', spawns: [{ enemyId: 'null-guard', x: 0, z: -10 }, { enemyId: 'eclipsed-arcanist', x: -5, z: -12 }] },
+            { type: 'wave', objective: 'Break the Abyss Knight.', spawns: [{ enemyId: 'abyss-knight-initiate', x: 0, z: -13 }] },
+            { type: 'wave', objective: 'Finish the Eclipse Warden boss rush.', spawns: [{ enemyId: 'eclipse-warden', x: 0, z: -15 }] }
+          ]
+        }
+      : kind === 'training'
+        ? {
+            id: 'training-simulation',
+            chapter: 'Nocturne Garden — Training Room',
+            title: 'Infinite Edge Calibration',
+            recommendedLevel: this.profile.level,
+            difficulty: 'Practice',
+            narrative: 'A compact training room simulation for testing movement, switching, cooldowns, Shadow Power, and combo flow.',
+            rewards: { xp: 70, gold: 45, skillPoints: 0, materials: { trainingSigil: 2, shadowShard: 2 } },
+            nextMission: this.profile.lastMissionId || 'awakening',
+            steps: [
+              { type: 'waypoint', objective: 'Step into the training glyph.', marker: { x: 0, z: -6 } },
+              { type: 'wave', objective: 'Defeat the training echoes.', spawns: [{ enemyId: 'shadow-cultist', x: -4, z: -9 }, { enemyId: 'shadow-cultist', x: 4, z: -9 }, { enemyId: 'eclipsed-arcanist', x: 0, z: -13 }] }
+            ]
+          }
+        : {
+            id: 'abyss-dungeon-run',
+            chapter: 'Abyss Dungeon — Procedural Prototype',
+            title: 'Three Rooms Below Midnight',
+            recommendedLevel: this.profile.level,
+            difficulty: 'Scaling',
+            narrative: 'A compact procedural dungeon run. Enemy room compositions are rolled each time and rewards feed the forge.',
+            rewards: { xp: 140, gold: 130, skillPoints: 1, materials: { shadowShard: 7, trainingSigil: 2 } },
+            nextMission: this.profile.lastMissionId || 'shadow-trace',
+            steps: [
+              { type: 'waypoint', objective: 'Activate the abyss gate.', marker: { x: 0, z: -7 } },
+              { type: 'wave', objective: 'Clear Abyss Room 1.', spawns: [{ enemyId: randomEnemy(), x: -5, z: -9 }, { enemyId: randomEnemy(), x: 4, z: -10 }] },
+              { type: 'wave', objective: 'Clear Abyss Room 2.', spawns: [{ enemyId: randomEnemy(), x: -6, z: -12 }, { enemyId: randomEnemy(), x: 0, z: -14 }, { enemyId: randomEnemy(), x: 6, z: -12 }] },
+              { type: 'wave', objective: 'Defeat the dungeon sentinel.', spawns: [{ enemyId: 'abyss-knight-initiate', x: 0, z: -15 }] }
+            ]
+          };
+
+    this.beginMission(mission, this.profile.lastMissionId || 'awakening');
+  }
+
+  private beginMission(mission: MissionData, checkpointMissionId: string): void {
+    this.currentMission = mission;
+    this.profile.lastMissionId = checkpointMissionId;
+    this.persist();
+    this.currentStepIndex = -1;
+    this.currentObjective = mission.narrative;
+    this.waveAdvanceAt = 0;
+    this.screen = 'playing';
+    this.refs.overlay.classList.add('hidden');
+    this.setCombatUI(true);
+    this.renderPartyBar();
+    this.updateCombatButtonLabels();
+    this.clearEnemiesAndProjectiles();
+    this.resetPlayerForMission();
+    this.audio.stopMusic();
+    this.audio.startMusic(mission.id === 'arena-boss-rush' ? 'boss' : 'battle');
+    this.toast(`${mission.chapter}: ${mission.title}`);
+    this.advanceMissionStep();
+  }
+
+  private completeMission(): void {
+    if (!this.currentMission) return;
+    const mission = this.currentMission;
+    this.clearEnemiesAndProjectiles();
+    this.setCombatUI(false);
+    this.screen = 'reward';
+    this.refs.overlay.classList.remove('hidden');
+    const rewards = mission.rewards;
+    const levelResult = this.grantRewards(rewards.xp, rewards.gold, rewards.skillPoints);
+    this.grantMaterials(rewards.materials);
+    if (!this.profile.completedMissions.includes(mission.id)) {
+      this.profile.completedMissions.push(mission.id);
+    }
+    if (mission.id === 'awakening' || mission.id === 'arena-boss-rush') this.unlockAchievement('bossDestroyer');
+    if (mission.id === 'abyss-dungeon-run') this.unlockAchievement('dungeonMaster');
+    if (!this.profile.unlockedMissions.includes(mission.nextMission)) {
+      this.profile.unlockedMissions.push(mission.nextMission);
+    }
+    this.profile.lastMissionId = mission.nextMission;
+    this.persist();
+
+    const isFirstMission = mission.id === 'awakening';
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="screen-kicker">Mission Complete</div>
+        <h2 class="screen-title">${mission.title}</h2>
+        <p class="screen-copy">${isFirstMission ? 'The Eclipse Warden has fallen. The Nocturne Garden now has proof that the Eclipse Order is only a mask for something deeper.' : 'The signal is erased. Your save now contains the complete MVP gameplay loop.'}</p>
+        <div class="reward-grid">
+          <div class="reward-line"><span>Mission XP</span><strong>${rewards.xp}</strong></div>
+          <div class="reward-line"><span>Gold</span><strong>${rewards.gold}</strong></div>
+          <div class="reward-line"><span>Skill Points</span><strong>${rewards.skillPoints}</strong></div>
+          <div class="reward-line"><span>Materials</span><strong>${this.formatCost(rewards.materials ?? {})}</strong></div>
+          <div class="reward-line"><span>Level Result</span><strong>${levelResult.levelsGained > 0 ? `+${levelResult.levelsGained} level` : 'No level up'}</strong></div>
+        </div>
+        <div class="screen-actions">
+          ${isFirstMission ? '<button class="menu-button" type="button" data-ui-action="open-upgrade">Open Character Upgrade</button>' : '<button class="menu-button" type="button" data-ui-action="save-menu">Save and Return to Menu</button>'}
+          <button class="secondary-button" type="button" data-ui-action="retry">Replay Mission</button>
+          <button class="secondary-button" type="button" data-ui-action="menu">Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private showCharacterScreen(): void {
+    this.screen = 'character';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    if (this.profile.unlockedCharacters.length >= 8) this.unlockAchievement('sevenCommanders');
+    this.syncPlayerStatsFromProfile(false);
+    const active = this.getActiveCharacter();
+    const stats = this.player.stats;
+    const weapon = this.getActiveWeapon();
+    const attackCost = upgradeGoldCost(this.profile.level, this.profile.upgrades.attack);
+    const vitalityCost = upgradeGoldCost(this.profile.level, this.profile.upgrades.vitality);
+    const shadowCost = upgradeGoldCost(this.profile.level, this.profile.upgrades.shadow);
+    const roster = Object.values(characters)
+      .map((character) => {
+        const inParty = this.profile.activeParty.includes(character.id);
+        const isActive = active.id === character.id;
+        const visuals = character.visuals ?? { primary: '#111124', secondary: '#7c3aed', accent: '#f43f5e' };
+        return `
+          <button class="system-card character-card ${isActive ? 'selected-card' : ''}" type="button" data-character-id="${character.id}">
+            <span class="portrait-orb" style="--orb-a:${visuals.secondary};--orb-b:${visuals.accent}">${character.codename.slice(0, 2)}</span>
+            <div class="screen-kicker">${character.rarity}${inParty ? ' · Party' : ''}</div>
+            <h3>${character.codename}</h3>
+            <p>${character.displayName} — ${character.role}</p>
+          </button>
+        `;
+      })
+      .join('');
+
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card wide-card">
+        <div class="screen-kicker">Character Collection / Switching</div>
+        <h2 class="screen-title">${active.codename}</h2>
+        <p class="screen-copy">${active.displayName}, ${active.title}. All seven Nocturne commanders are present as original data-driven characters. Tap a card to set the active combat leader; in combat use Q/E or swipe the portrait bar to switch and trigger a switch attack.</p>
+        <div class="character-grid">
+          <div class="character-stat"><span>Level</span><strong>${this.profile.level}</strong></div>
+          <div class="character-stat"><span>Gold</span><strong>${this.profile.gold}</strong></div>
+          <div class="character-stat"><span>Weapon</span><strong>${weapon.name}</strong></div>
+          <div class="character-stat"><span>Attack</span><strong>${stats.attack}</strong></div>
+          <div class="character-stat"><span>Max Health</span><strong>${stats.maxHealth}</strong></div>
+          <div class="character-stat"><span>Shadow Gain</span><strong>${stats.shadowGainMultiplier.toFixed(2)}x</strong></div>
+          <div class="character-stat"><span>Skill 1</span><strong>${active.skills[0].name}</strong></div>
+          <div class="character-stat"><span>Ultimate</span><strong>${active.ultimate.name}</strong></div>
+        </div>
+        <h3>Unlocked Roster</h3>
+        <div class="system-grid roster-grid">${roster}</div>
+        <h3>Account Upgrades</h3>
+        <div class="upgrade-grid">
+          ${this.upgradeCard('Attack Training', 'Higher sword and skill damage for the active party.', 'upgrade-attack', attackCost, this.profile.upgrades.attack)}
+          ${this.upgradeCard('Vitality Oath', 'More health and armor for boss mistakes.', 'upgrade-vitality', vitalityCost, this.profile.upgrades.vitality)}
+          ${this.upgradeCard('Shadow Control', 'Faster Shadow Power gain and movement tuning.', 'upgrade-shadow', shadowCost, this.profile.upgrades.shadow)}
+        </div>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="start-second">Start Second Mission</button>
+          <button class="secondary-button" type="button" data-ui-action="weapons">Weapons</button>
+          <button class="secondary-button" type="button" data-ui-action="save-menu">Save and Return to Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private upgradeCard(title: string, copy: string, action: UIAction, cost: number, rank: number): string {
+    const canBuy = this.profile.gold >= cost;
+    return `
+      <div class="upgrade-card">
+        <h3>${title} <span class="level-chip">Rank ${rank}</span></h3>
+        <p>${copy}</p>
+        <button class="secondary-button" type="button" data-ui-action="${action}" ${canBuy ? '' : 'disabled'}>Upgrade — ${cost} Gold</button>
+      </div>
+    `;
+  }
+
+  private purchaseUpgrade(kind: keyof PlayerProfile['upgrades']): void {
+    const cost = upgradeGoldCost(this.profile.level, this.profile.upgrades[kind]);
+    if (this.profile.gold < cost) {
+      this.toast('Not enough gold for that upgrade.');
+      this.showCharacterScreen();
+      return;
+    }
+    this.profile.gold -= cost;
+    this.profile.upgrades[kind] += 1;
+    this.syncPlayerStatsFromProfile(true);
+    this.persist();
+    this.showCharacterScreen();
+  }
+
+  private setActiveCharacter(characterId: string, redrawCharacterScreen = false): void {
+    const character = characters[characterId];
+    if (!character || !this.profile.unlockedCharacters.includes(characterId)) return;
+    this.profile.activeCharacterId = characterId;
+    if (!this.profile.activeParty.includes(characterId)) {
+      this.profile.activeParty = [characterId, ...this.profile.activeParty].slice(0, 4);
+    }
+    this.syncPlayerStatsFromProfile(true);
+    this.rebuildPlayerModel(true);
+    this.updateCombatButtonLabels();
+    this.renderPartyBar();
+    this.persist();
+    if (redrawCharacterScreen) this.showCharacterScreen();
+  }
+
+  private switchPartyTo(index: number): void {
+    const party = this.getActiveParty();
+    const character = party[index];
+    if (!character || character.id === this.profile.activeCharacterId) return;
+    this.setActiveCharacter(character.id);
+    this.player.shadowPower = addShadowPower(this.player.shadowPower, 6, this.player.stats.shadowGainMultiplier);
+    this.spawnRing(this.player.object.position, character.visuals?.accent ?? '#a78bfa', 3.4, 0.32);
+    this.damageEnemiesInArc(3.4, Math.PI * 1.6, 1.35, 'Switch Attack', character.visuals?.accent ?? '#a78bfa', 0.9);
+    this.toast(`Switch Attack: ${character.codename}`);
+  }
+
+  private switchPartyRelative(direction: -1 | 1): void {
+    if (this.screen !== 'playing') return;
+    const party = this.getActiveParty();
+    const current = Math.max(0, party.findIndex((character) => character.id === this.profile.activeCharacterId));
+    const next = (current + direction + party.length) % party.length;
+    this.switchPartyTo(next);
+  }
+
+  private renderPartyBar(): void {
+    const party = this.getActiveParty();
+    const buttons = party
+      .map((character, index) => {
+        const isActive = character.id === this.profile.activeCharacterId;
+        const visuals = character.visuals ?? { secondary: '#7c3aed', accent: '#f43f5e' };
+        return `<button class="party-button ${isActive ? 'active' : ''}" type="button" data-party-index="${index}" aria-label="Switch to ${character.codename}"><span style="--orb-a:${visuals.secondary};--orb-b:${visuals.accent}">${character.codename.slice(0, 2)}</span><strong>${character.codename}</strong></button>`;
+      })
+      .join('');
+    this.refs.partyBar.innerHTML = buttons;
+    this.refs.partyBar.classList.toggle('hidden', this.screen !== 'playing');
+  }
+
+  private updateCombatButtonLabels(): void {
+    const character = this.getActiveCharacter();
+    const labels: Partial<Record<InputAction, string>> = {
+      skill1: character.skills[0]?.name ?? 'Skill 1',
+      skill2: character.skills[1]?.name ?? 'Skill 2',
+      skill3: character.skills[2]?.name ?? 'Skill 3',
+      ultimate: character.ultimate.name
+    };
+    for (const [action, label] of Object.entries(labels) as [InputAction, string][]) {
+      const button = this.refs.actionButtons.get(action);
+      if (button) {
+        const cooldown = button.querySelector('.cooldown-label');
+        const textNode = Array.from(button.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
+        if (textNode) textNode.textContent = label.split(' ')[0];
+        button.setAttribute('aria-label', `${action} ${label}`);
+        if (cooldown) button.appendChild(cooldown);
+      }
+    }
+  }
+
+  private showDefeat(): void {
+    this.screen = 'defeat';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = `
+      <div class="screen-card">
+        <div class="screen-kicker">Combat Simulation Failed</div>
+        <h2 class="screen-title">The Shadow Falls Silent</h2>
+        <p class="screen-copy">Boss attacks are designed to be readable. Watch red telegraphs, dodge through impact windows, build Shadow Power, then answer with Eclipse Requiem.</p>
+        <div class="screen-actions">
+          <button class="menu-button" type="button" data-ui-action="retry">Retry Mission</button>
+          <button class="secondary-button" type="button" data-ui-action="open-upgrade">Character Upgrade</button>
+          <button class="secondary-button" type="button" data-ui-action="menu">Menu</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private createArena(): void {
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: '#14142f', roughness: 0.8, metalness: 0.12 });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(48, 48), floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+
+    const grid = new THREE.GridHelper(48, 24, '#7c3aed', '#27273b');
+    grid.position.y = 0.018;
+    this.scene.add(grid);
+
+    const gateMaterial = new THREE.MeshStandardMaterial({ color: '#2e1065', emissive: '#14002d', roughness: 0.56 });
+    const wallMaterial = new THREE.MeshStandardMaterial({ color: '#0f172a', emissive: '#080812', roughness: 0.82 });
+    for (let i = 0; i < 16; i += 1) {
+      const angle = (i / 16) * Math.PI * 2;
+      const radius = 23;
+      const obelisk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 5 + (i % 3), 1.2), i % 4 === 0 ? gateMaterial : wallMaterial);
+      obelisk.position.set(Math.sin(angle) * radius, obelisk.geometry.parameters.height / 2, Math.cos(angle) * radius);
+      obelisk.rotation.y = angle;
+      obelisk.castShadow = true;
+      obelisk.receiveShadow = true;
+      this.scene.add(obelisk);
+    }
+
+    for (const z of [-18, 18]) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(44, 3, 0.7), wallMaterial);
+      wall.position.set(0, 1.5, z);
+      wall.receiveShadow = true;
+      wall.castShadow = true;
+      this.scene.add(wall);
+    }
+    for (const x of [-18, 18]) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.7, 3, 44), wallMaterial);
+      wall.position.set(x, 1.5, 0);
+      wall.receiveShadow = true;
+      wall.castShadow = true;
+      this.scene.add(wall);
+    }
+  }
+
+  private createWaypointMarker(): void {
+    const group = new THREE.Group();
+    const ringMaterial = new THREE.MeshBasicMaterial({ color: '#22d3ee', transparent: true, opacity: 0.72, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.35, 1.55, 48), ringMaterial);
+    ring.rotation.x = -Math.PI / 2;
+    group.add(ring);
+    const pillar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.32, 3.8, 16),
+      new THREE.MeshBasicMaterial({ color: '#22d3ee', transparent: true, opacity: 0.26 })
+    );
+    pillar.position.y = 1.9;
+    group.add(pillar);
+    group.visible = false;
+    this.scene.add(group);
+    this.waypointMarker = group;
+  }
+
+  private createPlayer(): void {
+    const object = this.makePlayerModel();
+    object.position.set(0, 0, 6);
+    this.scene.add(object);
+    const stats = this.getComputedStats();
+    this.player = {
+      object,
+      hp: stats.maxHealth,
+      maxHp: stats.maxHealth,
+      radius: PLAYER_RADIUS,
+      cooldowns: new Map<string, number>(),
+      attackReadyAt: 0,
+      invulnerableUntil: 0,
+      dodgeUntil: 0,
+      dodgeVelocity: new THREE.Vector3(),
+      barrierUntil: 0,
+      shadowPower: 0,
+      combo: 0,
+      comboExpiresAt: 0,
+      facing: Math.PI,
+      stats
+    };
+  }
+
+  private makePlayerModel(): THREE.Group {
+    const group = new THREE.Group();
+    const visual = this.getActiveCharacter().visuals ?? { primary: '#111124', secondary: '#7c3aed', accent: '#f43f5e' };
+    const coat = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.45, 0.72, 1.95, 6),
+      new THREE.MeshToonMaterial({ color: visual.primary })
+    );
+    coat.position.y = 1.05;
+    coat.castShadow = true;
+    group.add(coat);
+
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.15, 0.5), new THREE.MeshToonMaterial({ color: visual.secondary }));
+    chest.position.set(0, 1.45, 0.05);
+    chest.castShadow = true;
+    group.add(chest);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 20, 16), new THREE.MeshToonMaterial({ color: '#e0c8b0' }));
+    head.position.y = 2.23;
+    head.castShadow = true;
+    group.add(head);
+
+    const hair = new THREE.Mesh(new THREE.ConeGeometry(0.43, 0.42, 7), new THREE.MeshToonMaterial({ color: '#050509' }));
+    hair.position.y = 2.52;
+    hair.rotation.y = 0.4;
+    hair.castShadow = true;
+    group.add(hair);
+
+    const sword = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.9, 0.12), new THREE.MeshStandardMaterial({ color: '#dbeafe', emissive: visual.accent, metalness: 0.52, roughness: 0.22 }));
+    sword.position.set(0.78, 1.22, 0.12);
+    sword.rotation.z = -0.38;
+    sword.castShadow = true;
+    group.add(sword);
+
+    const aura = new THREE.Mesh(
+      new THREE.TorusGeometry(0.92, 0.025, 8, 48),
+      new THREE.MeshBasicMaterial({ color: visual.accent, transparent: true, opacity: 0.65 })
+    );
+    aura.rotation.x = Math.PI / 2;
+    aura.position.y = 0.08;
+    group.add(aura);
+    return group;
+  }
+
+  private rebuildPlayerModel(preserveTransform: boolean): void {
+    if (!this.player) return;
+    const position = this.player.object.position.clone();
+    const rotationY = this.player.object.rotation.y;
+    this.scene.remove(this.player.object);
+    const nextModel = this.makePlayerModel();
+    if (preserveTransform) {
+      nextModel.position.copy(position);
+      nextModel.rotation.y = rotationY;
+    }
+    this.scene.add(nextModel);
+    this.player.object = nextModel;
+  }
+
+  private makeEnemyModel(data: EnemyData): THREE.Group {
+    const group = new THREE.Group();
+    const color = new THREE.Color(data.color);
+    const isBoss = data.aiStyle === 'boss';
+    const isMiniBoss = data.aiStyle === 'miniboss';
+    const height = isBoss ? 3.6 : isMiniBoss ? 2.8 : data.aiStyle === 'tank' ? 2.35 : 1.9;
+    const width = isBoss ? 1.35 : isMiniBoss ? 1.05 : data.aiStyle === 'tank' ? 0.95 : 0.72;
+    const material = new THREE.MeshToonMaterial({ color });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.62, width * 0.78, height, 7), material);
+    body.position.y = height / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(width * 0.38, 18, 14), new THREE.MeshToonMaterial({ color: '#111827' }));
+    head.position.y = height + width * 0.26;
+    head.castShadow = true;
+    group.add(head);
+
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(width * 0.18, 16, 12),
+      new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.82 })
+    );
+    core.position.set(0, height * 0.6, width * 0.62);
+    group.add(core);
+
+    if (data.aiStyle === 'ranged') {
+      const staff = new THREE.Mesh(new THREE.BoxGeometry(0.09, height * 0.95, 0.09), new THREE.MeshBasicMaterial({ color: '#38bdf8' }));
+      staff.position.set(width * 0.75, height * 0.55, 0);
+      group.add(staff);
+    } else {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.12, height * 0.72, 0.12), new THREE.MeshStandardMaterial({ color: '#f8fafc', emissive: data.color, metalness: 0.3 }));
+      blade.position.set(width * 0.86, height * 0.45, 0.18);
+      blade.rotation.z = -0.4;
+      blade.castShadow = true;
+      group.add(blade);
+    }
+
+    return group;
+  }
+
+  private loop(timeMs: number): void {
+    this.animationFrame = window.requestAnimationFrame((time) => this.loop(time));
+    const now = timeMs / 1000;
+    const rawDelta = Math.min(this.clock.getDelta(), 0.05);
+    const minFrameDelta = this.profile.settings.fpsCap === 30 ? 1 / 30 : 1 / 60;
+    if (now - this.lastFrameSecond < minFrameDelta * 0.65) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+    this.lastFrameSecond = now;
+
+    const timeScale = this.ultimateEndsAt > now && !this.profile.settings.reducedMotion ? (now < this.ultimateImpactAt ? 0.2 : 0.48) : 1;
+    const delta = rawDelta * timeScale;
+    if (this.screen === 'playing') {
+      this.updatePlayer(delta, now);
+      this.updateEnemies(delta, now);
+      this.updateProjectiles(delta, now);
+      this.updateMission(now);
+      this.updateCooldownButtons(now);
+    }
+    this.updateEffects(rawDelta);
+    this.updateDamageLabels(rawDelta);
+    this.updateCamera(rawDelta, now);
+    this.updateHud();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private updatePlayer(delta: number, now: number): void {
+    if (now > this.player.comboExpiresAt) {
+      this.player.combo = 0;
+    }
+
+    const position = this.player.object.position;
+    if (now < this.player.dodgeUntil) {
+      position.addScaledVector(this.player.dodgeVelocity, delta);
+      this.clampToArena(position);
+      return;
+    }
+
+    const input = this.getKeyboardInput().add(this.moveInput);
+    if (input.lengthSq() > 1) input.normalize();
+    if (input.lengthSq() <= 0.0001 || now < this.ultimateEndsAt) return;
+
+    const forward = new THREE.Vector3(Math.sin(this.cameraYaw), 0, Math.cos(this.cameraYaw));
+    const right = new THREE.Vector3(Math.cos(this.cameraYaw), 0, -Math.sin(this.cameraYaw));
+    const move = new THREE.Vector3().addScaledVector(right, input.x).addScaledVector(forward, input.y);
+    if (move.lengthSq() > 0.0001) {
+      move.normalize();
+      position.addScaledVector(move, this.player.stats.speed * delta);
+      this.clampToArena(position);
+      this.player.facing = Math.atan2(move.x, move.z);
+      this.player.object.rotation.y = this.player.facing;
+    }
+  }
+
+  private updateEnemies(delta: number, now: number): void {
+    for (const enemy of [...this.enemies]) {
+      if (!enemy.alive) continue;
+      if (enemy.hp <= 0) {
+        this.killEnemy(enemy);
+        continue;
+      }
+      this.updateBossPhase(enemy, now);
+      if (enemy.pendingAttack) {
+        this.resolvePendingAttack(enemy, now);
+        continue;
+      }
+      if (now < enemy.stunnedUntil) {
+        enemy.object.rotation.y += delta * 2;
+        continue;
+      }
+
+      switch (enemy.aiStyle) {
+        case 'melee':
+          this.updateMeleeAI(enemy, delta, now, 1.75, 0.38, 1.15);
+          break;
+        case 'tank':
+          this.updateMeleeAI(enemy, delta, now, 2.1, 0.72, 1.55);
+          break;
+        case 'ranged':
+          this.updateRangedAI(enemy, delta, now);
+          break;
+        case 'miniboss':
+          this.updateMiniBossAI(enemy, delta, now);
+          break;
+        case 'boss':
+          this.updateBossAI(enemy, delta, now);
+          break;
+        default:
+          enemy.aiStyle satisfies never;
+      }
+    }
+    this.enemies = this.enemies.filter((enemy) => enemy.alive);
+    if (this.activeBoss && !this.activeBoss.alive) this.activeBoss = null;
+  }
+
+  private updateMeleeAI(enemy: EnemyEntity, delta: number, now: number, range: number, windup: number, damageScale: number): void {
+    const distance = this.distanceToPlayer(enemy.object.position);
+    if (distance > range) {
+      this.moveEnemyTowardPlayer(enemy, delta, enemy.speed);
+      return;
+    }
+    this.facePlayer(enemy.object);
+    if (now >= enemy.attackReadyAt) {
+      this.queueEnemyAttack(enemy, windup, range + 0.32, enemy.attack * damageScale, 'Blade Impact', '#ef4444');
+      enemy.attackReadyAt = now + 1.25 + windup;
+    }
+  }
+
+  private updateRangedAI(enemy: EnemyEntity, delta: number, now: number): void {
+    const distance = this.distanceToPlayer(enemy.object.position);
+    if (distance < 5.8) {
+      const direction = enemy.object.position.clone().sub(this.player.object.position).setY(0).normalize();
+      enemy.object.position.addScaledVector(direction, enemy.speed * delta);
+      this.clampToArena(enemy.object.position);
+    } else if (distance > 8.5) {
+      this.moveEnemyTowardPlayer(enemy, delta, enemy.speed * 0.86);
+    } else {
+      const strafe = new THREE.Vector3(Math.cos(now + enemy.object.id), 0, Math.sin(now + enemy.object.id));
+      enemy.object.position.addScaledVector(strafe, enemy.speed * 0.32 * delta);
+      this.clampToArena(enemy.object.position);
+    }
+    this.facePlayer(enemy.object);
+    if (now >= enemy.attackReadyAt) {
+      const direction = this.player.object.position.clone().sub(enemy.object.position).setY(0.42).normalize();
+      this.spawnProjectile(enemy.object.position.clone().add(new THREE.Vector3(0, 1.35, 0)), direction, 8.4, enemy.attack, 0.34, 'enemy', '#38bdf8');
+      this.spawnRing(enemy.object.position, '#38bdf8', 1.8, 0.34);
+      enemy.attackReadyAt = now + 2.35;
+    }
+  }
+
+  private updateMiniBossAI(enemy: EnemyEntity, delta: number, now: number): void {
+    const distance = this.distanceToPlayer(enemy.object.position);
+    if (now >= enemy.abilityReadyAt) {
+      this.facePlayer(enemy.object);
+      const direction = this.player.object.position.clone().sub(enemy.object.position).setY(0).normalize();
+      enemy.object.position.addScaledVector(direction, Math.min(distance, 5.6));
+      this.clampToArena(enemy.object.position);
+      this.queueEnemyAttack(enemy, 0.48, 3.1, enemy.attack * 1.9, 'Abyss Charge', '#f43f5e');
+      this.spawnRing(enemy.object.position, '#f43f5e', 3.2, 0.52);
+      enemy.abilityReadyAt = now + 5.2;
+      return;
+    }
+    this.updateMeleeAI(enemy, delta, now, 2.6, 0.46, 1.35);
+  }
+
+  private updateBossAI(enemy: EnemyEntity, delta: number, now: number): void {
+    const distance = this.distanceToPlayer(enemy.object.position);
+    const phaseSpeed = 1 + (enemy.bossPhase - 1) * 0.12;
+    if (distance > 3.05) {
+      this.moveEnemyTowardPlayer(enemy, delta, enemy.speed * phaseSpeed);
+    } else if (now >= enemy.attackReadyAt) {
+      this.queueEnemyAttack(enemy, 0.52, 3.35, enemy.attack * (1.18 + enemy.bossPhase * 0.12), 'Warden Cleave', '#f97316');
+      enemy.attackReadyAt = now + Math.max(0.82, 1.42 - enemy.bossPhase * 0.12);
+    }
+
+    if (now < enemy.abilityReadyAt) return;
+    enemy.abilityIndex += 1;
+    const phase = enemy.bossPhase;
+    if (phase === 1) {
+      this.bossFanProjectiles(enemy, 3, 0.35, '#f97316');
+      enemy.abilityReadyAt = now + 3.4;
+    } else if (phase === 2) {
+      this.bossFanProjectiles(enemy, 5, 0.55, '#f43f5e');
+      enemy.abilityReadyAt = now + 3.0;
+    } else if (phase === 3) {
+      this.queueEnemyAttack(enemy, 0.95, 5.8, enemy.attack * 1.85, 'Null Stomp', '#a78bfa');
+      this.spawnRing(enemy.object.position, '#a78bfa', 5.8, 0.95);
+      enemy.abilityReadyAt = now + 3.2;
+    } else {
+      this.bossRadialProjectiles(enemy, 10, '#facc15');
+      this.queueEnemyAttack(enemy, 0.62, 4.2, enemy.attack * 2.1, 'Memory Rupture', '#facc15');
+      enemy.abilityReadyAt = now + 2.6;
+    }
+  }
+
+  private updateBossPhase(enemy: EnemyEntity, now: number): void {
+    if (enemy.aiStyle !== 'boss') return;
+    const ratio = enemy.hp / enemy.maxHp;
+    const nextPhase = ratio <= 0.25 ? 4 : ratio <= 0.5 ? 3 : ratio <= 0.75 ? 2 : 1;
+    if (nextPhase > enemy.bossPhase) {
+      enemy.bossPhase = nextPhase;
+      enemy.attackReadyAt = now + 0.7;
+      enemy.abilityReadyAt = now + 1.1;
+      this.player.shadowPower = addShadowPower(this.player.shadowPower, 12, this.player.stats.shadowGainMultiplier);
+      this.toast(`Eclipse Warden Phase ${nextPhase}: patterns changed.`);
+      this.audio.bossPhase();
+      this.shake(0.6);
+      this.spawnRing(enemy.object.position, '#facc15', 7.5, 0.8);
+    }
+  }
+
+  private updateProjectiles(delta: number, now: number): void {
+    for (const projectile of this.projectiles) {
+      projectile.life -= delta;
+      projectile.object.position.addScaledVector(projectile.velocity, delta);
+      projectile.object.rotation.x += delta * 8;
+      projectile.object.rotation.y += delta * 5;
+      if (projectile.from === 'enemy') {
+        const distance = projectile.object.position.distanceTo(this.player.object.position.clone().setY(projectile.object.position.y));
+        if (distance <= projectile.radius + this.player.radius) {
+          this.damagePlayer(projectile.damage, projectile.object.position, now, 'Magic Bolt');
+          projectile.life = 0;
+          this.spawnRing(projectile.object.position, projectile.color, 1.8, 0.24);
+        }
+      } else {
+        for (const enemy of this.enemies) {
+          const distance = projectile.object.position.distanceTo(enemy.object.position.clone().setY(projectile.object.position.y));
+          if (distance <= projectile.radius + enemy.radius) {
+            this.damageEnemy(enemy, projectile.damage / Math.max(1, this.player.stats.attack), 'Arcane Shot', projectile.color, 0.7);
+            projectile.life = 0;
+            this.spawnRing(projectile.object.position, projectile.color, 1.8, 0.24);
+            break;
+          }
+        }
+      }
+    }
+
+    for (const projectile of this.projectiles.filter((item) => item.life <= 0)) {
+      this.scene.remove(projectile.object);
+      projectile.object.geometry.dispose();
+      const material = projectile.object.material;
+      if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+      else material.dispose();
+    }
+    this.projectiles = this.projectiles.filter((item) => item.life > 0);
+  }
+
+  private updateMission(now: number): void {
+    if (!this.currentMission || this.currentStepIndex < 0) return;
+    const step = this.currentMission.steps[this.currentStepIndex];
+    if (!step) return;
+
+    if (step.type === 'waypoint') {
+      const markerPosition = new THREE.Vector3(step.marker.x, 0, step.marker.z);
+      if (this.player.object.position.distanceTo(markerPosition) < 2) {
+        this.spawnRing(markerPosition, '#22d3ee', 3.2, 0.5);
+        this.advanceMissionStep();
+      }
+      return;
+    }
+
+    if (step.type === 'wave' && this.enemies.length === 0) {
+      if (this.waveAdvanceAt === 0) {
+        this.waveAdvanceAt = now + 1.1;
+        this.currentObjective = 'Area clear. Preparing next objective.';
+      } else if (now >= this.waveAdvanceAt) {
+        this.waveAdvanceAt = 0;
+        this.advanceMissionStep();
+      }
+    }
+  }
+
+  private advanceMissionStep(): void {
+    if (!this.currentMission) return;
+    this.currentStepIndex += 1;
+    const step = this.currentMission.steps[this.currentStepIndex];
+    if (!step) {
+      this.completeMission();
+      return;
+    }
+
+    this.currentObjective = step.objective;
+    this.waveAdvanceAt = 0;
+    if (step.type === 'waypoint') {
+      this.placeWaypoint(step.marker.x, step.marker.z);
+      this.toast(step.objective);
+      return;
+    }
+
+    this.hideWaypoint();
+    for (const spawn of step.spawns) {
+      this.spawnEnemy(spawn.enemyId, spawn.x, spawn.z);
+    }
+    this.toast(step.objective);
+  }
+
+  private basicAttack(): void {
+    const now = performance.now() / 1000;
+    if (now < this.player.attackReadyAt || now < this.ultimateEndsAt) return;
+    this.player.attackReadyAt = now + 0.36;
+    this.faceNearestEnemy(4.1);
+    this.audio.slash();
+    this.spawnSlashArc('#e2e8f0', 3.2);
+    const hitCount = this.damageEnemiesInArc(3.25, Math.PI * 0.78, 1.0, 'Slash', '#e2e8f0', 0.8);
+    if (hitCount === 0) this.player.shadowPower = addShadowPower(this.player.shadowPower, 1, this.player.stats.shadowGainMultiplier);
+  }
+
+  private useSkill(skillIndex: 0 | 1 | 2): void {
+    const character = this.getActiveCharacter();
+    const skill = character.skills[skillIndex];
+    if (!skill) return;
+    const now = performance.now() / 1000;
+    if (!this.cooldownReady(skill.id, now) || now < this.ultimateEndsAt) return;
+    this.player.cooldowns.set(skill.id, now + skill.cooldown);
+    const color = character.visuals?.accent ?? '#a78bfa';
+
+    if (skillIndex === 0) {
+      const target = this.nearestEnemy(skill.range);
+      if (target) {
+        this.rotatePlayerToward(target.object.position);
+        if (skill.range > 6) {
+          const direction = target.object.position.clone().sub(this.player.object.position).setY(0.2).normalize();
+          this.spawnProjectile(this.player.object.position.clone().add(new THREE.Vector3(0, 1.3, 0)), direction, 12, this.player.stats.attack * skill.damageMultiplier, 0.38, 'player', color);
+        } else {
+          const behind = target.object.position.clone().add(this.getPlayerForward().multiplyScalar(-1.65));
+          behind.y = 0;
+          this.player.object.position.copy(behind);
+          this.clampToArena(this.player.object.position);
+        }
+      } else {
+        this.player.object.position.addScaledVector(this.getPlayerForward(), 3.8);
+        this.clampToArena(this.player.object.position);
+      }
+      this.player.invulnerableUntil = now + 0.22;
+      this.spawnSlashArc(color, skill.radius + 0.3);
+      this.damageEnemiesInArc(skill.radius, Math.PI * 1.12, skill.damageMultiplier, skill.name, color, 1.2);
+    } else if (skillIndex === 1) {
+      this.spawnRing(this.player.object.position, color, skill.radius, 0.46);
+      for (const enemy of this.enemies) {
+        if (enemy.object.position.distanceTo(this.player.object.position) <= skill.radius + enemy.radius) {
+          this.damageEnemy(enemy, skill.damageMultiplier, skill.name, color, 0.75);
+          enemy.stagger += 12;
+        }
+      }
+    } else {
+      this.player.barrierUntil = now + (skill.duration ?? 3.4);
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.06));
+      this.spawnRing(this.player.object.position, color, skill.radius, skill.duration ?? 0.62);
+      for (const enemy of this.enemies) {
+        if (enemy.object.position.distanceTo(this.player.object.position) <= skill.radius + enemy.radius) {
+          this.damageEnemy(enemy, skill.damageMultiplier, skill.name, color, 0.35);
+        }
+      }
+      this.toast(`${skill.name}: defensive flow active.`);
+    }
+
+    this.audio.magic();
+    this.spawnParticleBurst(this.player.object.position, color, 22, 0.68);
+    this.player.shadowPower = addShadowPower(this.player.shadowPower, skill.shadowGain, this.player.stats.shadowGainMultiplier);
+  }
+
+  private useShadowStep(): void {
+    const skill = this.getActiveCharacter().skills[0];
+    const now = performance.now() / 1000;
+    if (!this.cooldownReady(skill.id, now) || now < this.ultimateEndsAt) return;
+    this.player.cooldowns.set(skill.id, now + skill.cooldown);
+    const target = this.nearestEnemy(skill.range);
+    if (target) {
+      this.rotatePlayerToward(target.object.position);
+      const behind = target.object.position.clone().add(this.getPlayerForward().multiplyScalar(-1.7));
+      behind.y = 0;
+      this.player.object.position.copy(behind);
+      this.clampToArena(this.player.object.position);
+    } else {
+      this.player.object.position.addScaledVector(this.getPlayerForward(), 4.5);
+      this.clampToArena(this.player.object.position);
+    }
+    this.player.invulnerableUntil = now + 0.25;
+    this.audio.magic();
+    this.spawnRing(this.player.object.position, '#7c3aed', 3.2, 0.28);
+    this.spawnParticleBurst(this.player.object.position, '#a78bfa', 18, 0.55);
+    this.damageEnemiesInArc(skill.radius, Math.PI * 1.15, skill.damageMultiplier, skill.name, '#a78bfa', 1.8);
+    this.player.shadowPower = addShadowPower(this.player.shadowPower, skill.shadowGain, this.player.stats.shadowGainMultiplier);
+  }
+
+  private useUmbralBloom(): void {
+    const skill = protagonist.skills[1];
+    const now = performance.now() / 1000;
+    if (!this.cooldownReady(skill.id, now) || now < this.ultimateEndsAt) return;
+    this.player.cooldowns.set(skill.id, now + skill.cooldown);
+    this.audio.magic();
+    this.spawnRing(this.player.object.position, '#f43f5e', skill.radius, 0.42);
+    this.spawnParticleBurst(this.player.object.position, '#f43f5e', 30, 0.72);
+    let hit = 0;
+    for (const enemy of this.enemies) {
+      if (enemy.object.position.distanceTo(this.player.object.position) <= skill.radius + enemy.radius) {
+        this.damageEnemy(enemy, skill.damageMultiplier, skill.name, '#f43f5e', 0.9);
+        enemy.stagger += 18;
+        hit += 1;
+      }
+    }
+    this.player.shadowPower = addShadowPower(this.player.shadowPower, skill.shadowGain + hit * 2, this.player.stats.shadowGainMultiplier);
+  }
+
+  private useNocturneBarrier(): void {
+    const skill = protagonist.skills[2];
+    const now = performance.now() / 1000;
+    if (!this.cooldownReady(skill.id, now)) return;
+    this.player.cooldowns.set(skill.id, now + skill.cooldown);
+    this.player.barrierUntil = now + (skill.duration ?? 4);
+    this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.08));
+    this.audio.magic();
+    this.spawnRing(this.player.object.position, '#22d3ee', skill.radius, skill.duration ?? 4);
+    for (const enemy of this.enemies) {
+      if (enemy.object.position.distanceTo(this.player.object.position) <= skill.radius + enemy.radius) {
+        this.damageEnemy(enemy, skill.damageMultiplier, skill.name, '#22d3ee', 0.4);
+      }
+    }
+    this.player.shadowPower = addShadowPower(this.player.shadowPower, skill.shadowGain, this.player.stats.shadowGainMultiplier);
+    this.toast('Nocturne Barrier active: incoming damage reduced.');
+  }
+
+  private dodge(): void {
+    const now = performance.now() / 1000;
+    if (!this.cooldownReady('dodge', now) || now < this.ultimateEndsAt) return;
+    this.player.cooldowns.set('dodge', now + 1.05);
+    const input = this.getKeyboardInput().add(this.moveInput);
+    const direction = input.lengthSq() > 0.01 ? this.inputToWorldDirection(input) : this.getPlayerForward();
+    this.player.dodgeVelocity.copy(direction.normalize().multiplyScalar(16));
+    this.player.dodgeUntil = now + 0.32;
+    this.player.invulnerableUntil = now + 0.42;
+    this.audio.dodge();
+    this.spawnAfterImage();
+    this.spawnRing(this.player.object.position, '#a78bfa', 2.1, 0.25);
+  }
+
+  private useUltimate(): void {
+    const character = this.getActiveCharacter();
+    const ultimate = character.ultimate;
+    const now = performance.now() / 1000;
+    if (this.player.shadowPower < SHADOW_POWER_MAX || !this.cooldownReady(ultimate.id, now) || now < this.ultimateEndsAt) return;
+    this.player.cooldowns.set(ultimate.id, now + ultimate.cooldown);
+    this.unlockAchievement('shadowAwakening');
+    this.player.shadowPower = 0;
+    this.ultimateImpactAt = now + (this.profile.settings.reducedMotion ? 0.18 : 0.86);
+    this.ultimateEndsAt = now + (this.profile.settings.reducedMotion ? 0.7 : 2.35);
+    this.ultimateDidImpact = false;
+    this.currentObjective = ultimate.line;
+    this.audio.ultimate();
+    this.shake(1.35);
+    this.spawnRing(this.player.object.position, '#facc15', 7, 0.9);
+    this.spawnParticleBurst(this.player.object.position, '#7c3aed', 54, 1.4);
+    this.toast(`Ultimate — ${ultimate.name}`);
+  }
+
+  private impactUltimate(now: number): void {
+    if (this.ultimateDidImpact || now < this.ultimateImpactAt) return;
+    this.ultimateDidImpact = true;
+    const ultimate = this.getActiveCharacter().ultimate;
+    const aliveBefore = this.enemies.filter((enemy) => enemy.alive).length;
+    this.spawnRing(this.player.object.position, '#f43f5e', ultimate.radius, 0.68);
+    this.spawnParticleBurst(this.player.object.position, '#facc15', 72, 1.1);
+    for (const enemy of [...this.enemies]) {
+      if (enemy.object.position.distanceTo(this.player.object.position) <= ultimate.radius + enemy.radius) {
+        this.damageEnemy(enemy, ultimate.damageMultiplier, ultimate.name, '#facc15', 4.4);
+      }
+    }
+    if (this.enemies.filter((enemy) => enemy.alive).length < aliveBefore) this.unlockAchievement('ultimateFinish');
+    this.shake(1.8);
+  }
+
+  private damageEnemiesInArc(range: number, angle: number, multiplier: number, label: string, color: string, knockback: number): number {
+    const origin = this.player.object.position;
+    const forward = this.getPlayerForward();
+    let hitCount = 0;
+    for (const enemy of this.enemies) {
+      const offset = enemy.object.position.clone().sub(origin).setY(0);
+      const distance = offset.length();
+      if (distance > range + enemy.radius || distance <= 0.001) continue;
+      const direction = offset.clone().normalize();
+      if (direction.dot(forward) < Math.cos(angle / 2)) continue;
+      this.damageEnemy(enemy, multiplier, label, color, knockback);
+      hitCount += 1;
+    }
+    return hitCount;
+  }
+
+  private damageEnemy(enemy: EnemyEntity, multiplier: number, label: string, color: string, knockback: number): void {
+    if (!enemy.alive) return;
+    const damage = computeDamage(this.player.stats.attack, multiplier, enemy.defense, 0.94 + Math.random() * 0.16, this.player.stats.critChance, Math.random());
+    enemy.hp = Math.max(0, enemy.hp - damage);
+    enemy.stagger += damage * 0.36;
+    this.player.combo += 1;
+    this.player.comboExpiresAt = performance.now() / 1000 + 2.4;
+    this.player.shadowPower = addShadowPower(this.player.shadowPower, 3.2, this.player.stats.shadowGainMultiplier);
+    this.audio.hit();
+    this.spawnDamageLabel(enemy.object.position.clone().add(new THREE.Vector3(0, 2.2, 0)), damage, color, label);
+    this.spawnParticleBurst(enemy.object.position.clone().add(new THREE.Vector3(0, 1.2, 0)), color, 8, 0.35);
+
+    const knockDirection = enemy.object.position.clone().sub(this.player.object.position).setY(0);
+    if (knockDirection.lengthSq() > 0.001) {
+      enemy.object.position.addScaledVector(knockDirection.normalize(), knockback * 0.22);
+      this.clampToArena(enemy.object.position);
+    }
+
+    if (enemy.stagger >= enemy.staggerMax) {
+      enemy.stagger = 0;
+      enemy.stunnedUntil = performance.now() / 1000 + (enemy.aiStyle === 'boss' ? 1.1 : 1.65);
+      this.spawnDamageLabel(enemy.object.position.clone().add(new THREE.Vector3(0, 3, 0)), 'STAGGER', '#facc15', 'Break');
+      this.player.shadowPower = addShadowPower(this.player.shadowPower, 9, this.player.stats.shadowGainMultiplier);
+    }
+
+    if (enemy.hp <= 0) this.killEnemy(enemy);
+  }
+
+  private damagePlayer(amount: number, source: THREE.Vector3, now: number, label: string): void {
+    if (this.screen !== 'playing') return;
+    if (now < this.player.invulnerableUntil) {
+      this.player.shadowPower = addShadowPower(this.player.shadowPower, 9, this.player.stats.shadowGainMultiplier);
+      this.unlockAchievement('perfectDodge');
+      this.spawnDamageLabel(this.player.object.position.clone().add(new THREE.Vector3(0, 2.4, 0)), 'PERFECT', '#a78bfa', 'Dodge');
+      this.toast('Perfect dodge: Shadow Power increased.');
+      return;
+    }
+
+    const barrierScale = now < this.player.barrierUntil ? 0.42 : 1;
+    const mitigated = Math.max(1, Math.round((amount - this.player.stats.defense * 0.45) * barrierScale));
+    this.player.hp = Math.max(0, this.player.hp - mitigated);
+    this.spawnDamageLabel(this.player.object.position.clone().add(new THREE.Vector3(0, 2.5, 0)), mitigated, '#ef4444', label);
+    this.spawnRing(source, '#ef4444', 1.4, 0.24);
+    this.shake(0.55);
+
+    if (this.profile.settings.vibration && 'vibrate' in navigator) {
+      navigator.vibrate(28);
+    }
+
+    if (this.player.hp <= 0) {
+      this.showDefeat();
+    }
+  }
+
+  private killEnemy(enemy: EnemyEntity): void {
+    if (!enemy.alive) return;
+    enemy.alive = false;
+    this.unlockAchievement('firstBlood');
+    this.grantRewards(enemy.xpReward, enemy.goldReward, 0, false);
+    if (enemy.aiStyle === 'boss') this.grantMaterials({ nullFragment: 1, eclipseCore: 1 });
+    else if (enemy.aiStyle === 'miniboss') this.grantMaterials({ eclipseCore: 1 });
+    else if (enemy.aiStyle === 'tank') this.grantMaterials({ shadowShard: 2 });
+    else if (enemy.aiStyle === 'ranged') this.grantMaterials({ trainingSigil: 1 });
+    else this.grantMaterials({ shadowShard: 1 });
+    this.spawnRing(enemy.object.position, enemy.data.color, 2.5 + enemy.radius, 0.38);
+    this.spawnParticleBurst(enemy.object.position.clone().add(new THREE.Vector3(0, 1.4, 0)), enemy.data.color, enemy.aiStyle === 'boss' ? 42 : 18, 0.8);
+    this.scene.remove(enemy.object);
+    if (this.activeBoss === enemy) this.activeBoss = null;
+  }
+
+  private grantRewards(xp: number, gold: number, skillPoints: number, showToast = true): { levelsGained: number } {
+    const result = applyXp(this.profile.level, this.profile.xp, xp);
+    this.profile.level = result.level;
+    this.profile.xp = result.xp;
+    this.profile.gold += gold;
+    this.profile.skillPoints += skillPoints;
+    if (result.levelsGained > 0) {
+      this.syncPlayerStatsFromProfile(true);
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.25));
+    }
+    if (showToast) {
+      this.toast(`Rewards: +${xp} XP, +${gold} Gold${result.levelsGained ? `, +${result.levelsGained} Level` : ''}`);
+    }
+    return { levelsGained: result.levelsGained };
+  }
+
+  private queueEnemyAttack(enemy: EnemyEntity, windup: number, radius: number, damage: number, label: string, color: string): void {
+    enemy.pendingAttack = {
+      impactAt: performance.now() / 1000 + windup,
+      radius,
+      damage,
+      label,
+      color
+    };
+    this.spawnTelegraph(enemy.object.position, color, radius, windup);
+  }
+
+  private resolvePendingAttack(enemy: EnemyEntity, now: number): void {
+    if (!enemy.pendingAttack) return;
+    this.facePlayer(enemy.object);
+    if (now < enemy.pendingAttack.impactAt) return;
+    const pending = enemy.pendingAttack;
+    enemy.pendingAttack = undefined;
+    this.spawnRing(enemy.object.position, pending.color, pending.radius, 0.25);
+    if (this.distanceToPlayer(enemy.object.position) <= pending.radius + this.player.radius) {
+      this.damagePlayer(pending.damage, enemy.object.position, now, pending.label);
+    }
+  }
+
+  private bossFanProjectiles(enemy: EnemyEntity, count: number, spread: number, color: string): void {
+    this.facePlayer(enemy.object);
+    const base = this.player.object.position.clone().sub(enemy.object.position).setY(0).normalize();
+    const baseAngle = Math.atan2(base.x, base.z);
+    for (let i = 0; i < count; i += 1) {
+      const t = count === 1 ? 0 : i / (count - 1) - 0.5;
+      const angle = baseAngle + t * spread * Math.PI;
+      const direction = new THREE.Vector3(Math.sin(angle), 0.06, Math.cos(angle)).normalize();
+      this.spawnProjectile(enemy.object.position.clone().add(new THREE.Vector3(0, 1.7, 0)), direction, 7.2 + enemy.bossPhase, enemy.attack * 0.88, 0.42, 'enemy', color);
+    }
+    this.spawnRing(enemy.object.position, color, 2.5, 0.38);
+  }
+
+  private bossRadialProjectiles(enemy: EnemyEntity, count: number, color: string): void {
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2;
+      const direction = new THREE.Vector3(Math.sin(angle), 0.05, Math.cos(angle)).normalize();
+      this.spawnProjectile(enemy.object.position.clone().add(new THREE.Vector3(0, 1.7, 0)), direction, 8.4, enemy.attack * 0.82, 0.42, 'enemy', color);
+    }
+    this.spawnRing(enemy.object.position, color, 4.8, 0.42);
+  }
+
+  private spawnEnemy(enemyId: string, x: number, z: number): void {
+    const data = enemies[enemyId];
+    if (!data) throw new Error(`Unknown enemy: ${enemyId}`);
+    const object = this.makeEnemyModel(data);
+    object.position.set(x, 0, z);
+    this.scene.add(object);
+    const levelScale = 1 + Math.max(0, this.profile.level - 1) * 0.08;
+    const entity: EnemyEntity = {
+      id: `${enemyId}-${this.enemySerial += 1}`,
+      data,
+      object,
+      hp: Math.round(data.maxHealth * levelScale),
+      maxHp: Math.round(data.maxHealth * levelScale),
+      attack: Math.round(data.attack * levelScale),
+      defense: Math.round(data.defense * levelScale),
+      speed: data.speed,
+      radius: data.radius,
+      stagger: 0,
+      staggerMax: data.staggerMax,
+      xpReward: data.xpReward,
+      goldReward: data.goldReward,
+      aiStyle: data.aiStyle,
+      attackReadyAt: performance.now() / 1000 + 0.8,
+      abilityReadyAt: performance.now() / 1000 + 1.5,
+      stunnedUntil: 0,
+      alive: true,
+      bossPhase: 1,
+      abilityIndex: 0
+    };
+    this.enemies.push(entity);
+    if (data.aiStyle === 'boss' || data.aiStyle === 'miniboss') {
+      this.activeBoss = entity;
+      this.refs.bossPanel.classList.remove('hidden');
+      this.audio.stopMusic();
+      this.audio.startMusic(data.aiStyle === 'boss' ? 'boss' : 'battle');
+    }
+  }
+
+  private clearEnemiesAndProjectiles(): void {
+    for (const enemy of this.enemies) this.scene.remove(enemy.object);
+    for (const projectile of this.projectiles) this.scene.remove(projectile.object);
+    this.enemies = [];
+    this.projectiles = [];
+    this.activeBoss = null;
+    this.refs.bossPanel.classList.add('hidden');
+  }
+
+  private resetPlayerForMission(): void {
+    this.syncPlayerStatsFromProfile(false);
+    this.rebuildPlayerModel(false);
+    this.player.hp = this.player.maxHp;
+    this.player.shadowPower = 0;
+    this.player.combo = 0;
+    this.player.comboExpiresAt = 0;
+    this.player.cooldowns.clear();
+    this.player.object.position.set(0, 0, 6);
+    this.player.facing = Math.PI;
+    this.player.object.rotation.y = Math.PI;
+    this.cameraYaw = Math.PI;
+    this.hideWaypoint();
+  }
+
+  private syncPlayerStatsFromProfile(keepHealthRatio: boolean): void {
+    const oldMax = this.player?.maxHp ?? protagonist.baseStats.maxHealth;
+    const ratio = oldMax > 0 ? (this.player?.hp ?? oldMax) / oldMax : 1;
+    if (!this.player) return;
+    const stats = this.getComputedStats();
+    this.player.stats = stats;
+    this.player.maxHp = stats.maxHealth;
+    this.player.hp = keepHealthRatio ? Math.max(1, Math.round(stats.maxHealth * ratio)) : Math.min(this.player.hp || stats.maxHealth, stats.maxHealth);
+  }
+
+  private getKeyboardInput(): THREE.Vector2 {
+    const input = new THREE.Vector2();
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) input.x -= 1;
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) input.x += 1;
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) input.y += 1;
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) input.y -= 1;
+    return input;
+  }
+
+  private inputToWorldDirection(input: THREE.Vector2): THREE.Vector3 {
+    const normalized = input.clone();
+    if (normalized.lengthSq() > 1) normalized.normalize();
+    const forward = new THREE.Vector3(Math.sin(this.cameraYaw), 0, Math.cos(this.cameraYaw));
+    const right = new THREE.Vector3(Math.cos(this.cameraYaw), 0, -Math.sin(this.cameraYaw));
+    return new THREE.Vector3().addScaledVector(right, normalized.x).addScaledVector(forward, normalized.y).normalize();
+  }
+
+  private updateJoystick(clientX: number, clientY: number): void {
+    const rect = this.refs.joystickZone.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const max = rect.width * 0.34;
+    const dx = clamp(clientX - centerX, -max, max);
+    const dy = clamp(clientY - centerY, -max, max);
+    this.moveInput.set(dx / max, -dy / max);
+    if (this.moveInput.lengthSq() > 1) this.moveInput.normalize();
+    this.refs.joystickThumb.style.transform = `translate(calc(-50% + ${this.moveInput.x * max}px), calc(-50% + ${-this.moveInput.y * max}px))`;
+  }
+
+  private cooldownReady(id: string, now: number): boolean {
+    return (this.player.cooldowns.get(id) ?? 0) <= now;
+  }
+
+  private updateCooldownButtons(now: number): void {
+    const character = this.getActiveCharacter();
+    const byAction: Partial<Record<InputAction, string>> = {
+      skill1: character.skills[0].id,
+      skill2: character.skills[1].id,
+      skill3: character.skills[2].id,
+      dodge: 'dodge',
+      ultimate: character.ultimate.id
+    };
+
+    for (const [action, button] of this.refs.actionButtons) {
+      const cooldownId = byAction[action];
+      const label = button.querySelector<HTMLSpanElement>('.cooldown-label');
+      let remaining = 0;
+      if (cooldownId) remaining = Math.max(0, (this.player.cooldowns.get(cooldownId) ?? 0) - now);
+      const ultimateBlocked = action === 'ultimate' && this.player.shadowPower < SHADOW_POWER_MAX;
+      const disabled = remaining > 0 || ultimateBlocked || now < this.ultimateEndsAt;
+      button.classList.toggle('disabled', disabled);
+      button.setAttribute('aria-disabled', String(disabled));
+      if (label) {
+        label.hidden = !disabled;
+        label.textContent = action === 'ultimate' && ultimateBlocked && remaining <= 0 ? '100%' : formatCooldown(remaining);
+      }
+    }
+  }
+
+  private updateEffects(delta: number): void {
+    for (const effect of this.effects) {
+      effect.life -= delta;
+      if (effect.velocity) effect.object.position.addScaledVector(effect.velocity, delta);
+      if (effect.expand) {
+        const scale = 1 + (1 - effect.life / effect.maxLife) * effect.expand;
+        effect.object.scale.setScalar(scale);
+      }
+      if (effect.fade) {
+        effect.object.traverse((child) => {
+          const mesh = child as THREE.Mesh;
+          if (!mesh.material) return;
+          const material = mesh.material as THREE.Material & { opacity?: number; transparent?: boolean };
+          material.transparent = true;
+          material.opacity = clamp(effect.life / effect.maxLife, 0, 1);
+        });
+      }
+    }
+
+    for (const effect of this.effects.filter((item) => item.life <= 0)) {
+      this.scene.remove(effect.object);
+    }
+    this.effects = this.effects.filter((item) => item.life > 0);
+
+    if (this.screen === 'playing') {
+      const now = performance.now() / 1000;
+      this.impactUltimate(now);
+    }
+  }
+
+  private updateDamageLabels(delta: number): void {
+    const width = this.refs.damageLayer.clientWidth;
+    const height = this.refs.damageLayer.clientHeight;
+    for (const label of this.damageLabels) {
+      label.life -= delta;
+      label.lift += delta * 0.9;
+      const projected = label.world.clone().add(new THREE.Vector3(0, label.lift, 0)).project(this.camera);
+      const x = (projected.x * 0.5 + 0.5) * width;
+      const y = (-projected.y * 0.5 + 0.5) * height;
+      const opacity = clamp(label.life / label.maxLife, 0, 1);
+      label.element.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${1 + (1 - opacity) * 0.18})`;
+      label.element.style.opacity = opacity.toString();
+    }
+    for (const label of this.damageLabels.filter((item) => item.life <= 0)) {
+      label.element.remove();
+    }
+    this.damageLabels = this.damageLabels.filter((item) => item.life > 0);
+  }
+
+  private updateCamera(delta: number, now: number): void {
+    const playerPosition = this.player.object.position;
+    const forward = new THREE.Vector3(Math.sin(this.cameraYaw), 0, Math.cos(this.cameraYaw));
+    const right = new THREE.Vector3(Math.cos(this.cameraYaw), 0, -Math.sin(this.cameraYaw));
+    const ultimateZoom = now < this.ultimateEndsAt && !this.profile.settings.reducedMotion ? 0.62 : 1;
+    const distance = 8.4 * ultimateZoom;
+    const height = 4.9 * ultimateZoom + Math.sin(this.cameraPitch) * 1.4;
+    const desired = playerPosition.clone().addScaledVector(forward, -distance).addScaledVector(right, 1.25).add(new THREE.Vector3(0, height, 0));
+
+    if (this.cameraShake > 0 && this.profile.settings.screenShake && !this.profile.settings.reducedMotion) {
+      this.cameraShake = Math.max(0, this.cameraShake - delta * 1.6);
+      desired.x += (Math.random() - 0.5) * this.cameraShake * 0.34;
+      desired.y += (Math.random() - 0.5) * this.cameraShake * 0.22;
+    }
+
+    this.camera.position.lerp(desired, 1 - Math.pow(0.002, delta));
+    const lookAt = playerPosition.clone().addScaledVector(forward, 2.8).add(new THREE.Vector3(0, 1.65, 0));
+    this.camera.lookAt(lookAt);
+  }
+
+  private updateHud(): void {
+    if (!this.player) return;
+    const activeCharacter = this.getActiveCharacter();
+    const healthRatio = clamp(this.player.hp / this.player.maxHp, 0, 1);
+    this.refs.activeCodename.textContent = activeCharacter.codename;
+    this.refs.activeName.textContent = activeCharacter.displayName;
+    this.refs.healthFill.style.transform = `scaleX(${healthRatio})`;
+    this.refs.shadowFill.style.transform = `scaleX(${clamp(this.player.shadowPower / SHADOW_POWER_MAX, 0, 1)})`;
+    const xpRequirement = levelXpRequirement(this.profile.level);
+    this.refs.xpFill.style.transform = `scaleX(${clamp(this.profile.xp / xpRequirement, 0, 1)})`;
+    this.refs.playerLevel.textContent = `LV ${this.profile.level}`;
+    this.refs.playerGold.textContent = `GOLD ${this.profile.gold}`;
+    this.refs.playerXp.textContent = `XP ${this.profile.xp} / ${xpRequirement}`;
+    this.refs.objectiveCopy.textContent = this.currentObjective;
+
+    if (this.activeBoss && this.activeBoss.alive) {
+      this.refs.bossPanel.classList.remove('hidden');
+      this.refs.bossName.textContent = this.activeBoss.data.displayName;
+      this.refs.bossPhase.textContent = this.activeBoss.aiStyle === 'boss' ? `Phase ${this.activeBoss.bossPhase}` : 'Mini-Boss';
+      this.refs.bossFill.style.transform = `scaleX(${clamp(this.activeBoss.hp / this.activeBoss.maxHp, 0, 1)})`;
+    } else {
+      this.refs.bossPanel.classList.add('hidden');
+    }
+
+    if (this.player.combo > 1 && performance.now() / 1000 < this.player.comboExpiresAt) {
+      this.refs.comboBadge.classList.remove('hidden');
+      this.refs.comboBadge.textContent = `${this.player.combo} HIT`;
+    } else {
+      this.refs.comboBadge.classList.add('hidden');
+    }
+
+    this.updateMinimap();
+  }
+
+  private updateMinimap(): void {
+    const grid = this.refs.minimapGrid;
+    grid.innerHTML = '';
+    const addDot = (className: string, x: number, z: number): void => {
+      const dot = document.createElement('span');
+      dot.className = `map-dot ${className}`;
+      dot.style.left = `${clamp((x / ARENA_LIMIT) * 50 + 50, 4, 96)}%`;
+      dot.style.top = `${clamp((z / ARENA_LIMIT) * 50 + 50, 4, 96)}%`;
+      grid.appendChild(dot);
+    };
+    addDot('player', this.player.object.position.x, this.player.object.position.z);
+    for (const enemy of this.enemies) addDot('enemy', enemy.object.position.x, enemy.object.position.z);
+    if (this.waypointMarker?.visible) addDot('marker', this.waypointMarker.position.x, this.waypointMarker.position.z);
+  }
+
+  private setCombatUI(visible: boolean): void {
+    this.refs.hud.classList.toggle('hidden', !visible);
+    this.refs.touchControls.classList.toggle('hidden', !visible);
+    this.refs.partyBar.classList.toggle('hidden', !visible);
+    if (!visible) {
+      this.refs.bossPanel.classList.add('hidden');
+      this.refs.comboBadge.classList.add('hidden');
+    }
+  }
+
+  private placeWaypoint(x: number, z: number): void {
+    if (!this.waypointMarker) return;
+    this.waypointMarker.position.set(x, 0.04, z);
+    this.waypointMarker.visible = true;
+  }
+
+  private hideWaypoint(): void {
+    if (this.waypointMarker) this.waypointMarker.visible = false;
+  }
+
+  private spawnProjectile(origin: THREE.Vector3, direction: THREE.Vector3, speed: number, damage: number, radius: number, from: 'enemy' | 'player', color: string): void {
+    const material = new THREE.MeshBasicMaterial({ color });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), material);
+    mesh.position.copy(origin);
+    this.scene.add(mesh);
+    this.projectiles.push({ object: mesh, velocity: direction.normalize().multiplyScalar(speed), damage, radius, life: 4.2, from, color });
+  }
+
+  private spawnRing(position: THREE.Vector3, color: string, finalScale: number, duration: number): void {
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.76, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.02, 64), material);
+    ring.position.copy(position).setY(0.07);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+    this.effects.push({ object: ring, life: duration, maxLife: duration, expand: finalScale, fade: true });
+  }
+
+  private spawnTelegraph(position: THREE.Vector3, color: string, radius: number, duration: number): void {
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.34, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(radius * 0.86, radius, 64), material);
+    ring.position.copy(position).setY(0.055);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+    this.effects.push({ object: ring, life: duration, maxLife: duration, fade: true });
+  }
+
+  private spawnParticleBurst(position: THREE.Vector3, color: string, count: number, duration: number): void {
+    const geometry = new THREE.SphereGeometry(0.06, 8, 6);
+    for (let i = 0; i < count; i += 1) {
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+      mesh.position.copy(position).add(new THREE.Vector3(0, 0.8 + Math.random() * 0.8, 0));
+      const velocity = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(3 + Math.random() * 5);
+      this.scene.add(mesh);
+      this.effects.push({ object: mesh, life: duration, maxLife: duration, velocity, fade: true });
+    }
+  }
+
+  private spawnSlashArc(color: string, range: number): void {
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.66, side: THREE.DoubleSide });
+    const arc = new THREE.Mesh(new THREE.RingGeometry(range * 0.52, range * 0.58, 48, 1, -0.65, 1.3), material);
+    arc.position.copy(this.player.object.position).add(new THREE.Vector3(0, 0.7, 0)).addScaledVector(this.getPlayerForward(), 1.1);
+    arc.rotation.x = Math.PI / 2;
+    arc.rotation.z = -this.player.facing;
+    this.scene.add(arc);
+    this.effects.push({ object: arc, life: 0.18, maxLife: 0.18, expand: 0.35, fade: true });
+  }
+
+  private spawnAfterImage(): void {
+    const ghost = this.player.object.clone(true);
+    ghost.position.copy(this.player.object.position);
+    ghost.rotation.copy(this.player.object.rotation);
+    ghost.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.material) return;
+      mesh.material = new THREE.MeshBasicMaterial({ color: '#a78bfa', transparent: true, opacity: 0.26 });
+    });
+    this.scene.add(ghost);
+    this.effects.push({ object: ghost, life: 0.32, maxLife: 0.32, fade: true });
+  }
+
+  private spawnDamageLabel(position: THREE.Vector3, amount: number | string, color: string, label: string): void {
+    const element = document.createElement('div');
+    element.className = 'damage-number';
+    element.style.color = color;
+    element.textContent = typeof amount === 'number' ? `${label} ${amount}` : amount;
+    this.refs.damageLayer.appendChild(element);
+    this.damageLabels.push({ element, world: position, life: 0.95, maxLife: 0.95, lift: 0 });
+  }
+
+  private toast(message: string): void {
+    this.refs.toast.textContent = message;
+    this.refs.toast.classList.remove('hidden');
+    window.setTimeout(() => this.refs.toast.classList.add('hidden'), 2600);
+  }
+
+  private faceNearestEnemy(maxRange: number): void {
+    const target = this.nearestEnemy(maxRange);
+    if (target) this.rotatePlayerToward(target.object.position);
+  }
+
+  private nearestEnemy(maxRange: number): EnemyEntity | null {
+    let nearest: EnemyEntity | null = null;
+    let nearestDistance = maxRange;
+    for (const enemy of this.enemies) {
+      const distance = enemy.object.position.distanceTo(this.player.object.position);
+      if (distance < nearestDistance) {
+        nearest = enemy;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
+  private rotatePlayerToward(target: THREE.Vector3): void {
+    const offset = target.clone().sub(this.player.object.position);
+    if (offset.lengthSq() <= 0.001) return;
+    this.player.facing = Math.atan2(offset.x, offset.z);
+    this.player.object.rotation.y = this.player.facing;
+  }
+
+  private getPlayerForward(): THREE.Vector3 {
+    return new THREE.Vector3(Math.sin(this.player.facing), 0, Math.cos(this.player.facing)).normalize();
+  }
+
+  private moveEnemyTowardPlayer(enemy: EnemyEntity, delta: number, speed: number): void {
+    const direction = this.player.object.position.clone().sub(enemy.object.position).setY(0);
+    if (direction.lengthSq() <= 0.001) return;
+    direction.normalize();
+    enemy.object.position.addScaledVector(direction, speed * delta);
+    this.facePlayer(enemy.object);
+    this.clampToArena(enemy.object.position);
+  }
+
+  private facePlayer(object: THREE.Object3D): void {
+    const direction = this.player.object.position.clone().sub(object.position).setY(0);
+    if (direction.lengthSq() <= 0.001) return;
+    object.rotation.y = Math.atan2(direction.x, direction.z);
+  }
+
+  private distanceToPlayer(position: THREE.Vector3): number {
+    return position.clone().setY(0).distanceTo(this.player.object.position.clone().setY(0));
+  }
+
+  private clampToArena(position: THREE.Vector3): void {
+    position.x = clamp(position.x, -ARENA_LIMIT + 1, ARENA_LIMIT - 1);
+    position.z = clamp(position.z, -ARENA_LIMIT + 1, ARENA_LIMIT - 1);
+  }
+
+  private shake(amount: number): void {
+    if (!this.profile.settings.screenShake || this.profile.settings.reducedMotion) return;
+    this.cameraShake = Math.max(this.cameraShake, amount);
+  }
+
+  private resize(): void {
+    const width = this.refs.sceneHost.clientWidth || window.innerWidth;
+    const height = this.refs.sceneHost.clientHeight || window.innerHeight;
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height, false);
+  }
+
+  private updateRendererQuality(): void {
+    const preset = this.profile.settings.graphicsPreset;
+    const ratio = preset === 'LOW' ? 1 : preset === 'MEDIUM' ? 1.35 : preset === 'HIGH' ? 1.75 : 2;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, ratio));
+  }
+
+  private persist(): void {
+    this.saveData.profile = this.profile;
+    this.saveManager.save(this.saveData);
+  }
+}

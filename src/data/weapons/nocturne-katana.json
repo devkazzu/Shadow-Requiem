@@ -1,0 +1,9 @@
+{
+  "id": "nocturne-katana",
+  "name": "Nocturne Katana",
+  "category": "Sword",
+  "rarity": "Rare",
+  "attackBonus": 8,
+  "passive": "Basic attacks gain +1 Shadow Power on hit.",
+  "unlockCost": {}
+}

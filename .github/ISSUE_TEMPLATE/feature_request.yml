@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a new SHADOW REQUIEM feature
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Player goal
+      description: What player fantasy or workflow does this support?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: System area
+      options:
+        - Combat
+        - Characters
+        - Bosses
+        - UI/UX
+        - Android performance
+        - Save/progression
+        - Story/dialogue
+        - World/dungeon/arena
+        - Audio/VFX
+        - CI/build
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: MVP-safe scope
+      description: What is the smallest testable version of this feature?
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / performance notes

@@ -1,0 +1,65 @@
+{
+  "id": "epsilon",
+  "displayName": "Elyssia Vale",
+  "codename": "EPSILON",
+  "title": "Cannon Saint of Velvet Light",
+  "rarity": "Epic",
+  "role": "Precision Magic / Control",
+  "visuals": {
+    "primary": "#581c87",
+    "secondary": "#ec4899",
+    "accent": "#f8fafc"
+  },
+  "baseStats": {
+    "maxHealth": 345,
+    "attack": 43,
+    "defense": 8,
+    "speed": 6.7,
+    "critChance": 0.12,
+    "shadowGainMultiplier": 1.0
+  },
+  "skills": [
+    {
+      "id": "needle-star",
+      "name": "Needle Star",
+      "slot": 1,
+      "cooldown": 3.6,
+      "damageMultiplier": 2.05,
+      "radius": 2.8,
+      "range": 10,
+      "shadowGain": 10,
+      "description": "Pierce a narrow line with compressed magic."
+    },
+    {
+      "id": "velvet-field",
+      "name": "Velvet Field",
+      "slot": 2,
+      "cooldown": 8.2,
+      "damageMultiplier": 1.35,
+      "radius": 5.3,
+      "range": 0,
+      "shadowGain": 12,
+      "description": "Control space with a slowing magic field."
+    },
+    {
+      "id": "floating-cast",
+      "name": "Floating Cast",
+      "slot": 3,
+      "cooldown": 10.8,
+      "damageMultiplier": 1.2,
+      "radius": 4.2,
+      "range": 0,
+      "shadowGain": 14,
+      "description": "Rise briefly and release a defensive burst."
+    }
+  ],
+  "ultimate": {
+    "id": "requiem-cannon",
+    "name": "Requiem Cannon",
+    "cooldown": 22,
+    "damageMultiplier": 6.0,
+    "radius": 22,
+    "line": "Perfection is not optional.",
+    "description": "Fire a focused magic cannon through the battlefield."
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "id": "eta",
+  "displayName": "Etna Quill",
+  "codename": "ETA",
+  "title": "Engineer of Impossible Moonlight",
+  "rarity": "Epic",
+  "role": "Technology / Experimental Magic",
+  "visuals": {
+    "primary": "#082f49",
+    "secondary": "#06b6d4",
+    "accent": "#facc15"
+  },
+  "baseStats": {
+    "maxHealth": 340,
+    "attack": 40,
+    "defense": 10,
+    "speed": 6.5,
+    "critChance": 0.08,
+    "shadowGainMultiplier": 1.12
+  },
+  "skills": [
+    {
+      "id": "drone-lattice",
+      "name": "Drone Lattice",
+      "slot": 1,
+      "cooldown": 4.6,
+      "damageMultiplier": 1.8,
+      "radius": 4.2,
+      "range": 8,
+      "shadowGain": 12,
+      "description": "Deploy short-lived magic drones in a lattice burst."
+    },
+    {
+      "id": "trap-array",
+      "name": "Trap Array",
+      "slot": 2,
+      "cooldown": 8.8,
+      "damageMultiplier": 1.7,
+      "radius": 5.4,
+      "range": 0,
+      "shadowGain": 14,
+      "description": "Place experimental traps around the active target."
+    },
+    {
+      "id": "field-scan",
+      "name": "Field Scan",
+      "slot": 3,
+      "cooldown": 10.0,
+      "damageMultiplier": 1.0,
+      "radius": 6.0,
+      "range": 0,
+      "shadowGain": 16,
+      "description": "Scan and destabilize enemy armor."
+    }
+  ],
+  "ultimate": {
+    "id": "prototype-zero",
+    "name": "Prototype Zero",
+    "cooldown": 24,
+    "damageMultiplier": 5.7,
+    "radius": 21,
+    "line": "I have no idea if this survives testing.",
+    "description": "Trigger an unstable experimental machine over the arena."
+  }
+}

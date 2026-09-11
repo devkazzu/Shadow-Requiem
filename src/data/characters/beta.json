@@ -1,0 +1,65 @@
+{
+  "id": "beta",
+  "displayName": "Bellatrix Rune",
+  "codename": "BETA",
+  "title": "Archivist of Moonlit Spells",
+  "rarity": "Legendary",
+  "role": "Ranged Magic / Support",
+  "visuals": {
+    "primary": "#1f2937",
+    "secondary": "#38bdf8",
+    "accent": "#a78bfa"
+  },
+  "baseStats": {
+    "maxHealth": 330,
+    "attack": 39,
+    "defense": 9,
+    "speed": 6.6,
+    "critChance": 0.09,
+    "shadowGainMultiplier": 1.08
+  },
+  "skills": [
+    {
+      "id": "beta-bolt",
+      "name": "Lunar Bolt",
+      "slot": 1,
+      "cooldown": 3.8,
+      "damageMultiplier": 1.85,
+      "radius": 3.2,
+      "range": 9,
+      "shadowGain": 11,
+      "description": "Fire a precise moonlit projectile burst."
+    },
+    {
+      "id": "healing-script",
+      "name": "Healing Script",
+      "slot": 2,
+      "cooldown": 8.5,
+      "damageMultiplier": 0.7,
+      "radius": 4.6,
+      "range": 0,
+      "shadowGain": 12,
+      "description": "Create a restorative field that harms close enemies."
+    },
+    {
+      "id": "mirror-shield",
+      "name": "Mirror Shield",
+      "slot": 3,
+      "cooldown": 11.5,
+      "damageMultiplier": 0.8,
+      "radius": 4.0,
+      "range": 0,
+      "shadowGain": 10,
+      "description": "Raise a reflective magical shield."
+    }
+  ],
+  "ultimate": {
+    "id": "midnight-rain",
+    "name": "Midnight Rain",
+    "cooldown": 20,
+    "damageMultiplier": 5.2,
+    "radius": 20,
+    "line": "A proper tragedy deserves rain.",
+    "description": "Call down an elegant rain of condensed magic."
+  }
+}

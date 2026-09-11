@@ -1,0 +1,16 @@
+{
+  "id": "eclipse-warden",
+  "displayName": "Eclipse Warden",
+  "archetype": "Main Boss",
+  "maxHealth": 1400,
+  "attack": 42,
+  "defense": 16,
+  "speed": 3.1,
+  "radius": 1.6,
+  "staggerMax": 180,
+  "xpReward": 220,
+  "goldReward": 180,
+  "color": "#f97316",
+  "aiStyle": "boss",
+  "description": "The first major boss. Changes behavior across four health-based phases."
+}

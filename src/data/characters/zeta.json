@@ -1,0 +1,65 @@
+{
+  "id": "zeta",
+  "displayName": "Zerith Nox",
+  "codename": "ZETA",
+  "title": "Laughing Knife in the Blind Spot",
+  "rarity": "Epic",
+  "role": "Assassin",
+  "visuals": {
+    "primary": "#0f172a",
+    "secondary": "#64748b",
+    "accent": "#22d3ee"
+  },
+  "baseStats": {
+    "maxHealth": 315,
+    "attack": 47,
+    "defense": 7,
+    "speed": 8.2,
+    "critChance": 0.16,
+    "shadowGainMultiplier": 1.04
+  },
+  "skills": [
+    {
+      "id": "vanish-cut",
+      "name": "Vanish Cut",
+      "slot": 1,
+      "cooldown": 4.4,
+      "damageMultiplier": 2.25,
+      "radius": 3.0,
+      "range": 8,
+      "shadowGain": 11,
+      "description": "Blink behind the target for a backstab arc."
+    },
+    {
+      "id": "venom-thread",
+      "name": "Venom Thread",
+      "slot": 2,
+      "cooldown": 8.0,
+      "damageMultiplier": 1.45,
+      "radius": 4.6,
+      "range": 7,
+      "shadowGain": 12,
+      "description": "Apply a poison-like stagger burst with thread magic."
+    },
+    {
+      "id": "ghost-step",
+      "name": "Ghost Step",
+      "slot": 3,
+      "cooldown": 9.5,
+      "damageMultiplier": 1.0,
+      "radius": 3.8,
+      "range": 8,
+      "shadowGain": 14,
+      "description": "Become untouchable for a short assassination reposition."
+    }
+  ],
+  "ultimate": {
+    "id": "silent-checkmate",
+    "name": "Silent Checkmate",
+    "cooldown": 20,
+    "damageMultiplier": 6.4,
+    "radius": 16,
+    "line": "Too late. You were alone already.",
+    "description": "Mark every enemy, vanish, then strike all marked targets."
+  }
+}

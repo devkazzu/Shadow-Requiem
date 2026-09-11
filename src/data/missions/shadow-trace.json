@@ -1,0 +1,54 @@
+{
+  "id": "shadow-trace",
+  "chapter": "Chapter 1 \u2014 The Awakening",
+  "title": "Second Mission: Shadow Trace",
+  "recommendedLevel": 2,
+  "difficulty": "Normal+",
+  "narrative": "With the first seal shattered, Noctis tracks a fading Eclipse signal through the same arena. The order now knows something escaped.",
+  "rewards": {
+    "xp": 110,
+    "gold": 90,
+    "skillPoints": 1,
+    "materials": {
+      "shadowShard": 4,
+      "trainingSigil": 3
+    }
+  },
+  "nextMission": "shadow-trace",
+  "steps": [
+    {
+      "type": "waypoint",
+      "objective": "Reach the signal scar near the broken gate.",
+      "marker": {
+        "x": 0,
+        "z": -10
+      }
+    },
+    {
+      "type": "wave",
+      "objective": "Erase the reinforcements before they report back.",
+      "spawns": [
+        {
+          "enemyId": "shadow-cultist",
+          "x": -5,
+          "z": -9
+        },
+        {
+          "enemyId": "shadow-cultist",
+          "x": 5,
+          "z": -9
+        },
+        {
+          "enemyId": "eclipsed-arcanist",
+          "x": 0,
+          "z": -14
+        },
+        {
+          "enemyId": "null-guard",
+          "x": 2,
+          "z": -17
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "id": "gamma",
+  "displayName": "Gamia Solen",
+  "codename": "GAMMA",
+  "title": "Treasurer of Silent Wars",
+  "rarity": "Epic",
+  "role": "Support / Economy / Tactical",
+  "visuals": {
+    "primary": "#14532d",
+    "secondary": "#22c55e",
+    "accent": "#facc15"
+  },
+  "baseStats": {
+    "maxHealth": 360,
+    "attack": 34,
+    "defense": 11,
+    "speed": 6.4,
+    "critChance": 0.07,
+    "shadowGainMultiplier": 1.18
+  },
+  "skills": [
+    {
+      "id": "profit-cut",
+      "name": "Profit Cut",
+      "slot": 1,
+      "cooldown": 4.2,
+      "damageMultiplier": 1.7,
+      "radius": 3.0,
+      "range": 5,
+      "shadowGain": 14,
+      "description": "Slice a weak point and generate bonus resources."
+    },
+    {
+      "id": "weakness-ledger",
+      "name": "Weakness Ledger",
+      "slot": 2,
+      "cooldown": 8.0,
+      "damageMultiplier": 1.25,
+      "radius": 5.0,
+      "range": 8,
+      "shadowGain": 13,
+      "description": "Scan enemies and mark them for increased stagger."
+    },
+    {
+      "id": "golden-order",
+      "name": "Golden Order",
+      "slot": 3,
+      "cooldown": 12.0,
+      "damageMultiplier": 0.9,
+      "radius": 5.2,
+      "range": 0,
+      "shadowGain": 16,
+      "description": "Buff the party with calculated momentum."
+    }
+  ],
+  "ultimate": {
+    "id": "hostile-acquisition",
+    "name": "Hostile Acquisition",
+    "cooldown": 21,
+    "damageMultiplier": 4.9,
+    "radius": 17,
+    "line": "All debts are collected in darkness.",
+    "description": "A tactical command that converts enemy formation errors into burst damage."
+  }
+}
