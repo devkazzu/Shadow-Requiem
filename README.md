@@ -102,7 +102,7 @@ Prepare the Capacitor Android project:
 npm run android:prepare
 ```
 
-Build a debug APK on a machine with Java 17 and the Android SDK installed:
+Build a debug APK on a machine with Java 21 and the Android SDK installed:
 
 ```bash
 npm run android:debug

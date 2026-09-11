@@ -19,7 +19,7 @@ npm test
 npm run build
 ```
 
-If Java 17 and Android SDK are installed locally, also run:
+If Java 21 and Android SDK are installed locally, also run:
 
 ```bash
 npm run android:debug
