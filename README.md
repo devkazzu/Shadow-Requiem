@@ -48,6 +48,22 @@ The current implementation is **v0.1.0 — playable prototype / vertical slice**
 - Procedural original audio using Web Audio; no copied music or voice assets.
 - Capacitor Android wrapper and GitHub Actions APK build workflow.
 
+
+## Mobile-first UI redesign
+
+The UI has been rebuilt around **one screen = one purpose** instead of one large scrolling dashboard. The current shell now follows mobile action game usability principles:
+
+- Cinematic lobby as the first screen after load
+- Fixed 5-item bottom navigation: HOME / HERO / BAG / QUEST / MORE
+- Compact character screen with carousel portraits and tabs: Overview, Skills, Equipment, Talents, Stats
+- Separate inventory screen with category tabs and grid items
+- Separate mission screen with Story/Daily/Weekly/Boss/Dungeon/Event tabs
+- Compact battle preparation screen with selected team, enemy type, rewards, and START button
+- Full-screen map with overlay nodes instead of a map inside a scrolling page
+- More screen for secondary destinations: Map, Garden, Dungeon, Arena, Shop, Archive, Settings
+- Contextual victory/defeat popups instead of long result pages
+- Landscape combat HUD with right-side skill cluster and one-tap party portraits
+
 ## UI/UX skill installation
 
 The requested UI/UX Pro Max skill is installed locally in:

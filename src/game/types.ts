@@ -5,9 +5,12 @@ export type GameScreen =
   | 'reward'
   | 'character'
   | 'missions'
+  | 'team-prep'
   | 'map'
   | 'garden'
   | 'inventory'
+  | 'shop'
+  | 'more'
   | 'archive'
   | 'defeat'
   | 'settings';

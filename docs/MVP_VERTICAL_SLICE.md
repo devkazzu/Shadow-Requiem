@@ -65,3 +65,7 @@ Main Menu
 ## Original content boundaries
 
 The MVP intentionally avoids protected anime/game assets. All current models are procedural primitives. Audio is generated at runtime with Web Audio oscillators/noise. Story, names, UI, and gameplay code are original placeholders suitable for replacing with licensed content later only if rights are secured.
+
+## Mobile-first UX status
+
+The previous large overlay/dashboard approach has been replaced with dedicated mobile screens. Important features are no longer hidden in a giant scroll page. Main navigation is fixed at the bottom where appropriate, mission start goes through a compact preparation screen, and combat keeps the joystick/actions/portraits visible without opening menus.

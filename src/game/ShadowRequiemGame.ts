@@ -14,7 +14,28 @@ import {
   upgradeGoldCost
 } from './systems/combat';
 import { SaveManager, createNewSave } from './systems/save';
-import type { CharacterData, EnemyAIStyle, EnemyData, GameScreen, MissionData, MissionStep, MissionReward, PlayerProfile, SaveData, Stats, WeaponData } from './types';
+import {
+  type CharacterTab,
+  type InventoryTab,
+  type MissionTab,
+  type SettingsTab,
+  renderArchiveScreen,
+  renderBattlePrepScreen,
+  renderCharacterScreen as renderMobileCharacterScreen,
+  renderDefeatScreen,
+  renderGardenScreen,
+  renderHelpScreen,
+  renderInventoryScreen as renderMobileInventoryScreen,
+  renderMainLobby,
+  renderMapScreen as renderMobileMapScreen,
+  renderMissionScreen as renderMobileMissionScreen,
+  renderModeScreen,
+  renderMoreScreen,
+  renderSettingsScreen as renderMobileSettingsScreen,
+  renderShopScreen,
+  renderVictoryScreen
+} from './ui/mobileScreens';
+import type { CharacterData, EnemyAIStyle, EnemyData, GameScreen, MissionData, MissionReward, PlayerProfile, SaveData, Stats, WeaponData } from './types';
 
 const ARENA_LIMIT = 21;
 const PLAYER_RADIUS = 0.85;
@@ -33,6 +54,8 @@ type UIAction =
   | 'garden'
   | 'dungeon'
   | 'arena'
+  | 'shop'
+  | 'more'
   | 'archive'
   | 'settings'
   | 'help'
@@ -43,6 +66,7 @@ type UIAction =
   | 'start-second'
   | 'save-menu'
   | 'retry'
+  | 'launch-prepared'
   | 'start-dungeon'
   | 'start-arena'
   | 'start-training'
@@ -198,6 +222,13 @@ export class ShadowRequiemGame {
   private ultimateDidImpact = false;
   private lastFrameSecond = 0;
   private enemySerial = 0;
+  private characterTab: CharacterTab = 'OVERVIEW';
+  private inventoryTab: InventoryTab = 'WEAPONS';
+  private missionTab: MissionTab = 'STORY';
+  private settingsTab: SettingsTab = 'GENERAL';
+  private preparedMission: MissionData | null = null;
+  private preparedCheckpointMissionId = 'awakening';
+  private selectedTeamSlot = 0;
   private partySwipeStartX = 0;
   private partySwipePointerId: number | null = null;
   private readonly achievementCatalog: Record<string, string> = {
@@ -456,14 +487,53 @@ export class ShadowRequiemGame {
 
     this.refs.overlay.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
-      const button = target.closest<HTMLButtonElement>('[data-ui-action], [data-mission-id], [data-character-id], [data-equip-weapon-id], [data-craft-weapon-id], [data-room-id]');
+      const button = target.closest<HTMLButtonElement>(
+        '[data-ui-action], [data-prepare-mission-id], [data-prepare-mode], [data-launch-prepared], [data-character-id], [data-character-tab], [data-inventory-category], [data-mission-category], [data-settings-category], [data-team-slot], [data-team-pick], [data-equip-weapon-id], [data-craft-weapon-id], [data-room-id]'
+      );
       if (!button || button.disabled) return;
-      if (button.dataset.missionId) {
-        this.startMission(button.dataset.missionId);
+      if (button.dataset.prepareMissionId) {
+        this.prepareMission(button.dataset.prepareMissionId);
+        return;
+      }
+      if (button.dataset.prepareMode) {
+        this.prepareGeneratedMode(button.dataset.prepareMode as 'dungeon' | 'arena' | 'training');
+        return;
+      }
+      if (button.dataset.launchPrepared) {
+        this.launchPreparedMission();
         return;
       }
       if (button.dataset.characterId) {
         this.setActiveCharacter(button.dataset.characterId, true);
+        return;
+      }
+      if (button.dataset.characterTab) {
+        this.characterTab = button.dataset.characterTab as CharacterTab;
+        this.showCharacterScreen();
+        return;
+      }
+      if (button.dataset.inventoryCategory) {
+        this.inventoryTab = button.dataset.inventoryCategory as InventoryTab;
+        this.showInventoryScreen();
+        return;
+      }
+      if (button.dataset.missionCategory) {
+        this.missionTab = button.dataset.missionCategory as MissionTab;
+        this.showMissionsScreen();
+        return;
+      }
+      if (button.dataset.settingsCategory) {
+        this.settingsTab = button.dataset.settingsCategory as SettingsTab;
+        this.showSettings();
+        return;
+      }
+      if (button.dataset.teamSlot) {
+        this.selectedTeamSlot = Number(button.dataset.teamSlot);
+        this.showBattlePrepScreen();
+        return;
+      }
+      if (button.dataset.teamPick) {
+        this.pickPreparedTeamMember(button.dataset.teamPick);
         return;
       }
       if (button.dataset.equipWeaponId) {
@@ -578,6 +648,12 @@ export class ShadowRequiemGame {
       case 'arena':
         this.showArenaScreen();
         break;
+      case 'shop':
+        this.showShopScreen();
+        break;
+      case 'more':
+        this.showMoreScreen();
+        break;
       case 'archive':
         this.showArchiveScreen();
         break;
@@ -595,13 +671,13 @@ export class ShadowRequiemGame {
         this.advanceIntro();
         break;
       case 'intro-skip':
-        this.startMission('awakening');
+        this.prepareMission('awakening');
         break;
       case 'open-upgrade':
         this.showCharacterScreen();
         break;
       case 'start-second':
-        this.startMission('shadow-trace');
+        this.prepareMission('shadow-trace');
         break;
       case 'save-menu':
         this.persist();
@@ -613,14 +689,17 @@ export class ShadowRequiemGame {
         else if (this.currentMission?.id === 'training-simulation') this.startGeneratedMission('training');
         else this.startMission(this.currentMission?.id ?? this.profile.lastMissionId ?? 'awakening');
         break;
+      case 'launch-prepared':
+        this.launchPreparedMission();
+        break;
       case 'start-dungeon':
-        this.startGeneratedMission('dungeon');
+        this.prepareGeneratedMode('dungeon');
         break;
       case 'start-arena':
-        this.startGeneratedMission('arena');
+        this.prepareGeneratedMode('arena');
         break;
       case 'start-training':
-        this.startGeneratedMission('training');
+        this.prepareGeneratedMode('training');
         break;
       case 'upgrade-attack':
         this.purchaseUpgrade('attack');
@@ -695,149 +774,47 @@ export class ShadowRequiemGame {
       this.saveData = loadedSave;
       this.profile = loadedSave.profile;
     }
-
-    const continueLabel = this.profile.completedMissions.includes('awakening') ? 'Continue: Shadow Trace' : 'Continue: Awakening';
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="menu-kicker">Android-first vertical slice v0.1.0</div>
-        <h1 class="logo-title">Shadow <span>Requiem</span></h1>
-        <p class="screen-copy">A playable dark anime action RPG MVP: main menu, cinematic intro, tutorial arena, sword combat, dodge, three shadow skills, ultimate, three enemy types, mini-boss, major boss, rewards, upgrades, and secure local save/load.</p>
-        ${message ? `<p class="ultimate-line">${message}</p>` : ''}
-        <ul class="feature-list" aria-label="Implemented MVP features">
-          <li>Third-person arena camera</li>
-          <li>Touch joystick and combat buttons</li>
-          <li>Original procedural audio and VFX</li>
-          <li>Data-driven characters, enemies, missions</li>
-        </ul>
-        <div class="menu-actions full-shell-actions">
-          <button class="menu-button" type="button" data-ui-action="new-game">New Game</button>
-          <button class="menu-button" type="button" data-ui-action="continue" ${hasSave ? '' : 'disabled'}>${continueLabel}</button>
-          <button class="menu-button" type="button" data-ui-action="story">Story</button>
-          <button class="menu-button" type="button" data-ui-action="characters">Characters</button>
-          <button class="menu-button" type="button" data-ui-action="weapons">Weapons</button>
-          <button class="menu-button" type="button" data-ui-action="inventory">Inventory</button>
-          <button class="menu-button" type="button" data-ui-action="map">Map</button>
-          <button class="menu-button" type="button" data-ui-action="missions">Missions</button>
-          <button class="menu-button" type="button" data-ui-action="garden">Nocturne Garden</button>
-          <button class="menu-button" type="button" data-ui-action="dungeon">Abyss Dungeon</button>
-          <button class="menu-button" type="button" data-ui-action="arena">Arena</button>
-          <button class="secondary-button" type="button" data-ui-action="archive">Archive</button>
-          <button class="secondary-button" type="button" data-ui-action="help">Controls</button>
-          <button class="secondary-button" type="button" data-ui-action="settings">Settings</button>
-        </div>
-        <p class="small-note">No copyrighted anime footage, music, logos, ripped models, or extracted assets are used. All visuals are procedural prototype assets.</p>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderMainLobby({
+      profile: this.profile,
+      activeCharacter: this.getActiveCharacter(),
+      activeWeapon: this.getActiveWeapon(),
+      hasSave,
+      message,
+      activeNav: 'home'
+    });
   }
 
   private showHelp(): void {
-    this.screen = 'menu';
+    this.screen = 'more';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="screen-kicker">Playable Controls</div>
-        <h2 class="screen-title">How to Fight</h2>
-        <p class="screen-copy">Use the virtual joystick on the left and combat buttons on the right. Drag on the arena to rotate the camera. Keyboard fallback is also implemented for desktop testing.</p>
-        <div class="reward-grid">
-          <div class="reward-line"><span>Move</span><strong>Joystick or WASD</strong></div>
-          <div class="reward-line"><span>Attack</span><strong>Attack button or J / Enter</strong></div>
-          <div class="reward-line"><span>Dodge</span><strong>Dodge button or Space</strong></div>
-          <div class="reward-line"><span>Skills</span><strong>Step K, Bloom L, Guard I</strong></div>
-          <div class="reward-line"><span>Ultimate</span><strong>Fill Shadow Power, then U</strong></div>
-        </div>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="new-game">Start New Game</button>
-          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderHelpScreen();
   }
 
   private showMissionsScreen(): void {
     this.screen = 'missions';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    const missionCards = Object.values(missions)
-      .map((mission) => {
-        const unlocked = this.profile.unlockedMissions.includes(mission.id);
-        const completed = this.profile.completedMissions.includes(mission.id);
-        return `
-          <article class="system-card">
-            <div class="screen-kicker">${mission.chapter}</div>
-            <h3>${mission.title}</h3>
-            <p>${mission.narrative}</p>
-            <div class="reward-line"><span>Recommended</span><strong>LV ${mission.recommendedLevel} · ${mission.difficulty}</strong></div>
-            <button class="menu-button" type="button" data-mission-id="${mission.id}" ${unlocked ? '' : 'disabled'}>${completed ? 'Replay' : unlocked ? 'Start' : 'Locked'}</button>
-          </article>
-        `;
-      })
-      .join('');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card wide-card">
-        <div class="screen-kicker">Story Command</div>
-        <h2 class="screen-title">Mission Board</h2>
-        <p class="screen-copy">Story missions are data-driven and fully launch combat objectives. Complete Chapter 1 to unlock the second mission and continue progression.</p>
-        <div class="system-grid">${missionCards}</div>
-        <h3>Daily / Challenge Contracts</h3>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="start-training">Daily Training Contract</button>
-          <button class="menu-button" type="button" data-ui-action="start-dungeon">Daily Abyss Run</button>
-          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderMobileMissionScreen({
+      profile: this.profile,
+      missions: Object.values(missions),
+      selectedTab: this.missionTab,
+      activeNav: 'missions'
+    });
   }
 
   private showMapScreen(): void {
     this.screen = 'map';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card wide-card">
-        <div class="screen-kicker">Interconnected World Prototype</div>
-        <h2 class="screen-title">World Map</h2>
-        <p class="screen-copy">The full open world is represented as a functional node map for this build. Available nodes launch playable missions or modes; locked regions are marked as roadmap content, not fake buttons.</p>
-        <div class="world-map-panel glass-panel">
-          ${this.mapNode('Shadow City', 'HQ', 18, 54, 'garden')}
-          ${this.mapNode('Sealed Arena', 'Story', 42, 62, 'missions')}
-          ${this.mapNode('Abyss Gate', 'Dungeon', 63, 40, 'dungeon')}
-          ${this.mapNode('Capital Arena', 'Arena', 74, 70, 'arena')}
-          <span class="locked-node" style="left:28%;top:24%">Dark Forest · TODO v0.4</span>
-          <span class="locked-node" style="left:82%;top:22%">Null Dimension · TODO v0.8</span>
-        </div>
-        <div class="screen-actions"><button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button></div>
-      </div>
-    `;
-  }
-
-  private mapNode(name: string, label: string, left: number, top: number, action: UIAction): string {
-    return `<button class="map-node" type="button" data-ui-action="${action}" style="left:${left}%;top:${top}%"><strong>${name}</strong><span>${label}</span></button>`;
+    this.refs.overlay.innerHTML = renderMobileMapScreen();
   }
 
   private showGardenScreen(): void {
     this.screen = 'garden';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    const rooms = [
-      ['command', 'Command Center', 'Open the mission board and direct Nocturne operations.'],
-      ['training', 'Training Room', 'Launch a playable combat training simulation.'],
-      ['forge', 'Weapon Forge', 'Craft and equip working prototype weapons.'],
-      ['laboratory', 'Laboratory', 'Start an experimental abyss dungeon run.'],
-      ['library', 'Library', 'Read lore and roadmap archive entries.'],
-      ['treasury', 'Treasury', 'Inspect currencies and materials.'],
-      ['teleport', 'Teleportation Room', 'Open the functional world map nodes.'],
-      ['secret', 'Secret Chamber', 'Enter a compact boss-rush arena test.']
-    ];
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card wide-card">
-        <div class="screen-kicker">Home Base</div>
-        <h2 class="screen-title">Nocturne Garden HQ</h2>
-        <p class="screen-copy">A functional hub shell for the future headquarters. Each room routes to a working screen or playable mode so no visible control is fake.</p>
-        <div class="system-grid">${rooms.map(([id, title, copy]) => `<button class="system-card room-button" type="button" data-room-id="${id}"><h3>${title}</h3><p>${copy}</p></button>`).join('')}</div>
-        <div class="screen-actions"><button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button></div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderGardenScreen();
   }
 
   private showGardenRoom(roomId: string): void {
@@ -846,7 +823,7 @@ export class ShadowRequiemGame {
         this.showMissionsScreen();
         return;
       case 'training':
-        this.startGeneratedMission('training');
+        this.prepareGeneratedMode('training');
         return;
       case 'forge':
       case 'treasury':
@@ -873,109 +850,54 @@ export class ShadowRequiemGame {
     this.screen = 'inventory';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    const materials = Object.entries(this.profile.inventory)
-      .map(([key, value]) => `<div class="character-stat"><span>${this.prettyMaterial(key)}</span><strong>${value}</strong></div>`)
-      .join('');
-    const weaponCards = Object.values(weapons)
-      .map((weapon) => {
-        const unlocked = this.profile.unlockedWeapons.includes(weapon.id);
-        const equipped = this.profile.equippedWeaponId === weapon.id;
-        const cost = this.formatCost(weapon.unlockCost);
-        return `
-          <article class="system-card weapon-card ${equipped ? 'selected-card' : ''}">
-            <div class="screen-kicker">${weapon.rarity} · ${weapon.category}</div>
-            <h3>${weapon.name}</h3>
-            <p>${weapon.passive}</p>
-            <div class="reward-line"><span>Attack Bonus</span><strong>+${weapon.attackBonus}</strong></div>
-            ${unlocked ? `<button class="menu-button" type="button" data-equip-weapon-id="${weapon.id}" ${equipped ? 'disabled' : ''}>${equipped ? 'Equipped' : 'Equip'}</button>` : `<button class="menu-button" type="button" data-craft-weapon-id="${weapon.id}" ${this.canAffordMaterials(weapon.unlockCost) ? '' : 'disabled'}>Craft · ${cost}</button>`}
-          </article>
-        `;
-      })
-      .join('');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card wide-card">
-        <div class="screen-kicker">Inventory / Forge</div>
-        <h2 class="screen-title">Weapons and Materials</h2>
-        <p class="screen-copy">Mission, dungeon, arena, and boss rewards feed this working inventory. Crafting consumes materials and equipment immediately changes combat stats.</p>
-        <h3>Materials</h3>
-        <div class="character-grid">${materials}</div>
-        <h3>Weapons</h3>
-        <div class="system-grid">${weaponCards}</div>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="characters">Open Characters</button>
-          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderMobileInventoryScreen({
+      profile: this.profile,
+      weapons: Object.values(weapons),
+      equippedWeaponId: this.profile.equippedWeaponId,
+      unlockedWeapons: this.profile.unlockedWeapons,
+      inventory: this.profile.inventory,
+      tab: this.inventoryTab,
+      activeNav: 'inventory'
+    });
   }
 
   private showDungeonScreen(): void {
-    this.screen = 'missions';
+    this.screen = 'more';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="screen-kicker">Procedural Mode Prototype</div>
-        <h2 class="screen-title">Abyss Dungeon</h2>
-        <p class="screen-copy">Every run rolls a compact sequence of random enemy rooms, a buff objective, and a mini-boss. Future versions expand floors, traps, blessings, and nightmare modifiers.</p>
-        <div class="reward-grid">
-          <div class="reward-line"><span>Floors</span><strong>3-room prototype</strong></div>
-          <div class="reward-line"><span>Rewards</span><strong>XP, Gold, Shadow Shards</strong></div>
-          <div class="reward-line"><span>Difficulty</span><strong>Scales with level</strong></div>
-        </div>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="start-dungeon">Enter Abyss</button>
-          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderModeScreen('dungeon');
   }
 
   private showArenaScreen(): void {
-    this.screen = 'missions';
+    this.screen = 'more';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="screen-kicker">Challenge Mode Prototype</div>
-        <h2 class="screen-title">Capital Arena</h2>
-        <p class="screen-copy">Boss Rush is functional now: survive an elite guard, mini-boss, and Eclipse Warden sequence for bonus materials. Leaderboards and matchmaking are roadmap architecture.</p>
-        <div class="reward-grid">
-          <div class="reward-line"><span>Mode</span><strong>Boss Rush</strong></div>
-          <div class="reward-line"><span>Scoring</span><strong>Completion + combo rewards</strong></div>
-          <div class="reward-line"><span>Online</span><strong>TODO: fair leaderboard service</strong></div>
-        </div>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="start-arena">Start Boss Rush</button>
-          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderModeScreen('arena');
   }
 
   private showArchiveScreen(): void {
     this.screen = 'archive';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    const unlocked = this.profile.completedMissions.includes('awakening');
-    const achievements = Object.entries(this.achievementCatalog)
-      .map(([id, name]) => `<div class="character-stat"><span>${name}</span><strong>${this.profile.achievements.includes(id) ? 'Unlocked' : 'Locked'}</strong></div>`)
-      .join('');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card wide-card">
-        <div class="screen-kicker">Library / Lore</div>
-        <h2 class="screen-title">Shadow Archive</h2>
-        <div class="system-grid">
-          <article class="system-card"><h3>The Eclipse Order</h3><p>A public myth and private machine. Their experiments awaken powers they cannot interpret.</p></article>
-          <article class="system-card"><h3>The Nocturne Garden</h3><p>A secret organization built to move faster than kingdoms, cults, and magical corporations.</p></article>
-          <article class="system-card"><h3>The Null King</h3><p>${unlocked ? 'Recovered fragment: Eclipse reports refer to a monarch who edits memory rather than territory.' : 'Locked lore: complete The Awakening to recover the first memory fragment.'}</p></article>
-          <article class="system-card"><h3>Roadmap Notice</h3><p>Open-world cities, NPC schedules, arena seasons, voice-ready dialogue, and New Game+ are planned as staged systems after combat feel is stable.</p></article>
-        </div>
-        <h3>Achievements</h3>
-        <div class="character-grid">${achievements}</div>
-        <div class="screen-actions"><button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button></div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderArchiveScreen(
+      this.achievementCatalog,
+      this.profile.achievements,
+      this.profile.completedMissions.includes('awakening')
+    );
+  }
+
+  private showMoreScreen(): void {
+    this.screen = 'more';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = renderMoreScreen();
+  }
+
+  private showShopScreen(): void {
+    this.screen = 'shop';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = renderShopScreen(this.profile);
   }
 
   private unlockAchievement(id: keyof ShadowRequiemGame['achievementCatalog']): void {
@@ -1046,28 +968,13 @@ export class ShadowRequiemGame {
   private showSettings(): void {
     this.screen = 'settings';
     this.setCombatUI(false);
-    const settings = this.profile.settings;
     this.refs.overlay.classList.remove('hidden');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="screen-kicker">Functional MVP Settings</div>
-        <h2 class="screen-title">Settings</h2>
-        <p class="screen-copy">Only implemented settings are shown. Expanded graphics, audio, language, privacy, accessibility, and account pages are tracked as roadmap TODOs in the README.</p>
-        <div class="settings-grid">
-          <div class="setting-row"><span>Screen Shake</span><strong>${settings.screenShake ? 'Enabled' : 'Disabled'}</strong></div>
-          <button class="secondary-button" type="button" data-ui-action="toggle-shake">Toggle Screen Shake</button>
-          <div class="setting-row"><span>Reduced Motion</span><strong>${settings.reducedMotion ? 'Enabled' : 'Disabled'}</strong></div>
-          <button class="secondary-button" type="button" data-ui-action="toggle-motion">Toggle Reduced Motion</button>
-          <div class="setting-row"><span>FPS Preference</span><strong>${settings.fpsCap} FPS</strong></div>
-          <button class="secondary-button" type="button" data-ui-action="toggle-fps">Toggle FPS Preference</button>
-          <div class="setting-row"><span>Graphics Preset</span><strong>${settings.graphicsPreset}</strong></div>
-          <button class="secondary-button" type="button" data-ui-action="toggle-graphics">Cycle Graphics Preset</button>
-        </div>
-        <div class="screen-actions">
-          <button class="secondary-button" type="button" data-ui-action="menu">Back to Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderMobileSettingsScreen({
+      profile: this.profile,
+      settings: this.profile.settings,
+      selectedTab: this.settingsTab,
+      activeNav: 'more'
+    });
   }
 
   private startNewGame(): void {
@@ -1085,15 +992,17 @@ export class ShadowRequiemGame {
   private renderIntro(): void {
     const line = this.introLines[this.introIndex];
     this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="screen-kicker">${line.kicker}</div>
-        <h2 class="screen-title">${line.title}</h2>
-        <p class="screen-copy">${line.copy}</p>
-        <div class="ultimate-line">"Every legend begins in the darkness."</div>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="intro-next">${this.introIndex === this.introLines.length - 1 ? 'Begin Tutorial' : 'Next'}</button>
-          <button class="secondary-button" type="button" data-ui-action="intro-skip">Skip to Tutorial</button>
-        </div>
+      <div class="mobile-screen intro-screen">
+        <section class="intro-card glass-panel">
+          <div class="screen-kicker">${line.kicker}</div>
+          <h1>${line.title}</h1>
+          <p>${line.copy}</p>
+          <blockquote>Every legend begins in the darkness.</blockquote>
+          <div class="popup-actions">
+            <button class="menu-button" type="button" data-ui-action="intro-next">${this.introIndex === this.introLines.length - 1 ? 'Begin Tutorial' : 'Next'}</button>
+            <button class="secondary-button" type="button" data-ui-action="intro-skip">Skip</button>
+          </div>
+        </section>
       </div>
     `;
   }
@@ -1104,7 +1013,7 @@ export class ShadowRequiemGame {
       this.renderIntro();
       return;
     }
-    this.startMission('awakening');
+    this.prepareMission('awakening');
   }
 
   private continueGame(): void {
@@ -1115,7 +1024,62 @@ export class ShadowRequiemGame {
     }
     this.saveData = loaded;
     this.profile = loaded.profile;
-    this.startMission(this.profile.lastMissionId || 'awakening');
+    this.prepareMission(this.profile.lastMissionId || 'awakening');
+  }
+
+  private prepareMission(missionId: string): void {
+    const mission = missions[missionId] ?? missions.awakening;
+    this.preparedMission = mission;
+    this.preparedCheckpointMissionId = mission.id;
+    this.selectedTeamSlot = 0;
+    this.showBattlePrepScreen();
+  }
+
+  private prepareGeneratedMode(kind: 'dungeon' | 'arena' | 'training'): void {
+    this.preparedMission = this.createGeneratedMission(kind);
+    this.preparedCheckpointMissionId = this.profile.lastMissionId || 'awakening';
+    this.selectedTeamSlot = 0;
+    this.showBattlePrepScreen();
+  }
+
+  private showBattlePrepScreen(): void {
+    if (!this.preparedMission) return;
+    this.screen = 'team-prep';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = renderBattlePrepScreen({
+      profile: this.profile,
+      mission: this.preparedMission,
+      party: this.getActiveParty(),
+      roster: Object.values(characters),
+      selectedSlot: this.selectedTeamSlot,
+      activeNav: 'missions'
+    });
+  }
+
+  private pickPreparedTeamMember(characterId: string): void {
+    if (!characters[characterId] || !this.profile.unlockedCharacters.includes(characterId)) return;
+    const nextParty = [...(this.profile.activeParty?.length ? this.profile.activeParty : defaultParty)];
+    const previousIndex = nextParty.indexOf(characterId);
+    if (previousIndex >= 0) {
+      [nextParty[previousIndex], nextParty[this.selectedTeamSlot]] = [nextParty[this.selectedTeamSlot], nextParty[previousIndex]];
+    } else {
+      nextParty[this.selectedTeamSlot] = characterId;
+    }
+    this.profile.activeParty = nextParty.slice(0, 4);
+    this.profile.activeCharacterId = this.profile.activeParty[0];
+    this.syncPlayerStatsFromProfile(true);
+    this.rebuildPlayerModel(true);
+    this.persist();
+    this.showBattlePrepScreen();
+  }
+
+  private launchPreparedMission(): void {
+    if (!this.preparedMission) {
+      this.prepareMission(this.profile.lastMissionId || 'awakening');
+      return;
+    }
+    this.beginMission(this.preparedMission, this.preparedCheckpointMissionId);
   }
 
   private startMission(missionId: string): void {
@@ -1124,8 +1088,12 @@ export class ShadowRequiemGame {
   }
 
   private startGeneratedMission(kind: 'dungeon' | 'arena' | 'training'): void {
+    this.beginMission(this.createGeneratedMission(kind), this.profile.lastMissionId || 'awakening');
+  }
+
+  private createGeneratedMission(kind: 'dungeon' | 'arena' | 'training'): MissionData {
     const randomEnemy = () => ['shadow-cultist', 'eclipsed-arcanist', 'null-guard'][Math.floor(Math.random() * 3)];
-    const mission: MissionData = kind === 'arena'
+    return kind === 'arena'
       ? {
           id: 'arena-boss-rush',
           chapter: 'Arena — Boss Rush',
@@ -1173,8 +1141,6 @@ export class ShadowRequiemGame {
               { type: 'wave', objective: 'Defeat the dungeon sentinel.', spawns: [{ enemyId: 'abyss-knight-initiate', x: 0, z: -15 }] }
             ]
           };
-
-    this.beginMission(mission, this.profile.lastMissionId || 'awakening');
   }
 
   private beginMission(mission: MissionData, checkpointMissionId: string): void {
@@ -1218,26 +1184,12 @@ export class ShadowRequiemGame {
     this.profile.lastMissionId = mission.nextMission;
     this.persist();
 
-    const isFirstMission = mission.id === 'awakening';
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="screen-kicker">Mission Complete</div>
-        <h2 class="screen-title">${mission.title}</h2>
-        <p class="screen-copy">${isFirstMission ? 'The Eclipse Warden has fallen. The Nocturne Garden now has proof that the Eclipse Order is only a mask for something deeper.' : 'The signal is erased. Your save now contains the complete MVP gameplay loop.'}</p>
-        <div class="reward-grid">
-          <div class="reward-line"><span>Mission XP</span><strong>${rewards.xp}</strong></div>
-          <div class="reward-line"><span>Gold</span><strong>${rewards.gold}</strong></div>
-          <div class="reward-line"><span>Skill Points</span><strong>${rewards.skillPoints}</strong></div>
-          <div class="reward-line"><span>Materials</span><strong>${this.formatCost(rewards.materials ?? {})}</strong></div>
-          <div class="reward-line"><span>Level Result</span><strong>${levelResult.levelsGained > 0 ? `+${levelResult.levelsGained} level` : 'No level up'}</strong></div>
-        </div>
-        <div class="screen-actions">
-          ${isFirstMission ? '<button class="menu-button" type="button" data-ui-action="open-upgrade">Open Character Upgrade</button>' : '<button class="menu-button" type="button" data-ui-action="save-menu">Save and Return to Menu</button>'}
-          <button class="secondary-button" type="button" data-ui-action="retry">Replay Mission</button>
-          <button class="secondary-button" type="button" data-ui-action="menu">Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderVictoryScreen({
+      mission,
+      levelsGained: levelResult.levelsGained,
+      isFirstMission: mission.id === 'awakening',
+      materialLabel: this.formatCost(rewards.materials ?? {}) || '—'
+    });
   }
 
   private showCharacterScreen(): void {
@@ -1247,57 +1199,18 @@ export class ShadowRequiemGame {
     if (this.profile.unlockedCharacters.length >= 8) this.unlockAchievement('sevenCommanders');
     this.syncPlayerStatsFromProfile(false);
     const active = this.getActiveCharacter();
-    const stats = this.player.stats;
-    const weapon = this.getActiveWeapon();
-    const attackCost = upgradeGoldCost(this.profile.level, this.profile.upgrades.attack);
-    const vitalityCost = upgradeGoldCost(this.profile.level, this.profile.upgrades.vitality);
-    const shadowCost = upgradeGoldCost(this.profile.level, this.profile.upgrades.shadow);
-    const roster = Object.values(characters)
-      .map((character) => {
-        const inParty = this.profile.activeParty.includes(character.id);
-        const isActive = active.id === character.id;
-        const visuals = character.visuals ?? { primary: '#111124', secondary: '#7c3aed', accent: '#f43f5e' };
-        return `
-          <button class="system-card character-card ${isActive ? 'selected-card' : ''}" type="button" data-character-id="${character.id}">
-            <span class="portrait-orb" style="--orb-a:${visuals.secondary};--orb-b:${visuals.accent}">${character.codename.slice(0, 2)}</span>
-            <div class="screen-kicker">${character.rarity}${inParty ? ' · Party' : ''}</div>
-            <h3>${character.codename}</h3>
-            <p>${character.displayName} — ${character.role}</p>
-          </button>
-        `;
-      })
-      .join('');
-
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card wide-card">
-        <div class="screen-kicker">Character Collection / Switching</div>
-        <h2 class="screen-title">${active.codename}</h2>
-        <p class="screen-copy">${active.displayName}, ${active.title}. All seven Nocturne commanders are present as original data-driven characters. Tap a card to set the active combat leader; in combat use Q/E or swipe the portrait bar to switch and trigger a switch attack.</p>
-        <div class="character-grid">
-          <div class="character-stat"><span>Level</span><strong>${this.profile.level}</strong></div>
-          <div class="character-stat"><span>Gold</span><strong>${this.profile.gold}</strong></div>
-          <div class="character-stat"><span>Weapon</span><strong>${weapon.name}</strong></div>
-          <div class="character-stat"><span>Attack</span><strong>${stats.attack}</strong></div>
-          <div class="character-stat"><span>Max Health</span><strong>${stats.maxHealth}</strong></div>
-          <div class="character-stat"><span>Shadow Gain</span><strong>${stats.shadowGainMultiplier.toFixed(2)}x</strong></div>
-          <div class="character-stat"><span>Skill 1</span><strong>${active.skills[0].name}</strong></div>
-          <div class="character-stat"><span>Ultimate</span><strong>${active.ultimate.name}</strong></div>
-        </div>
-        <h3>Unlocked Roster</h3>
-        <div class="system-grid roster-grid">${roster}</div>
-        <h3>Account Upgrades</h3>
-        <div class="upgrade-grid">
-          ${this.upgradeCard('Attack Training', 'Higher sword and skill damage for the active party.', 'upgrade-attack', attackCost, this.profile.upgrades.attack)}
-          ${this.upgradeCard('Vitality Oath', 'More health and armor for boss mistakes.', 'upgrade-vitality', vitalityCost, this.profile.upgrades.vitality)}
-          ${this.upgradeCard('Shadow Control', 'Faster Shadow Power gain and movement tuning.', 'upgrade-shadow', shadowCost, this.profile.upgrades.shadow)}
-        </div>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="start-second">Start Second Mission</button>
-          <button class="secondary-button" type="button" data-ui-action="weapons">Weapons</button>
-          <button class="secondary-button" type="button" data-ui-action="save-menu">Save and Return to Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderMobileCharacterScreen({
+      profile: this.profile,
+      characters: Object.values(characters),
+      activeCharacter: active,
+      activeStats: this.player.stats,
+      activeWeapon: this.getActiveWeapon(),
+      tab: this.characterTab,
+      attackCost: upgradeGoldCost(this.profile.level, this.profile.upgrades.attack),
+      vitalityCost: upgradeGoldCost(this.profile.level, this.profile.upgrades.vitality),
+      shadowCost: upgradeGoldCost(this.profile.level, this.profile.upgrades.shadow),
+      activeNav: 'characters'
+    });
   }
 
   private upgradeCard(title: string, copy: string, action: UIAction, cost: number, rank: number): string {
@@ -1396,18 +1309,7 @@ export class ShadowRequiemGame {
     this.screen = 'defeat';
     this.setCombatUI(false);
     this.refs.overlay.classList.remove('hidden');
-    this.refs.overlay.innerHTML = `
-      <div class="screen-card">
-        <div class="screen-kicker">Combat Simulation Failed</div>
-        <h2 class="screen-title">The Shadow Falls Silent</h2>
-        <p class="screen-copy">Boss attacks are designed to be readable. Watch red telegraphs, dodge through impact windows, build Shadow Power, then answer with Eclipse Requiem.</p>
-        <div class="screen-actions">
-          <button class="menu-button" type="button" data-ui-action="retry">Retry Mission</button>
-          <button class="secondary-button" type="button" data-ui-action="open-upgrade">Character Upgrade</button>
-          <button class="secondary-button" type="button" data-ui-action="menu">Menu</button>
-        </div>
-      </div>
-    `;
+    this.refs.overlay.innerHTML = renderDefeatScreen();
   }
 
   private createArena(): void {
