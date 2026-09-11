@@ -81,18 +81,18 @@ export function renderMainLobby(props: LobbyProps): string {
           </div>
           <div class="lobby-v2-brand" aria-label="Shadow Requiem"><strong>SHADOW REQUIEM</strong><span>Nocturne Garden HQ</span></div>
           <div class="lobby-v2-system-row" aria-label="Social and settings">
-            ${systemButton('Squad', 'more')}
-            ${systemButton('Mail', 'mail', 3)}
-            ${systemButton('Settings', 'settings')}
+            ${systemButton('Squad', 'more', undefined, 'squad')}
+            ${systemButton('Mail', 'mail', 3, 'mail')}
+            ${systemButton('Settings', 'settings', undefined, 'settings')}
           </div>
         </header>
 
         <aside class="lobby-v2-left-menu" aria-label="Lobby menu">
-          ${sideMenuButton('SHOP', 'Prototype store', 'shop')}
-          ${sideMenuButton('HEROES', 'Roster', 'characters')}
-          ${sideMenuButton('LOADOUT', 'Weapons', 'inventory')}
-          ${sideMenuButton('MISSIONS', 'Quest board', 'missions')}
-          ${sideMenuButton('EVENTS', 'Limited modes', 'play-modes')}
+          ${sideMenuButton('STORE', 'Prototype shop', 'data-ui-action="shop"')}
+          ${sideMenuButton('GARDEN', 'Nocturne HQ', 'data-ui-action="garden"')}
+          ${sideMenuButton('TRAINING', 'Practice room', 'data-prepare-mode="training"')}
+          ${sideMenuButton('ARENA', 'Rank trial', 'data-prepare-mode="arena"')}
+          ${sideMenuButton('MISSIONS', 'Story board', 'data-ui-action="missions"')}
         </aside>
 
         <nav class="lobby-v2-hero-select" aria-label="Lobby hero selector">
@@ -100,11 +100,11 @@ export function renderMainLobby(props: LobbyProps): string {
         </nav>
 
         <aside class="lobby-v2-event-panel" aria-label="Events and notifications">
-          ${eventPanelButton('EVENT', 'The Eclipse Awakens', 'play-modes', 1)}
-          ${eventPanelButton('DAILY', 'Daily Login', 'daily-reward', 1)}
-          ${eventPanelButton('FEST', 'Shadow Fest', 'play-modes')}
-          ${eventPanelButton('MAIL', 'System Mail', 'mail', 3)}
-          ${eventPanelButton('MORE', 'More Systems', 'more')}
+          ${eventPanelButton('EVENT', 'The Eclipse Awakens', 'data-ui-action="play-modes"', 1)}
+          ${eventPanelButton('DAILY', 'Daily Login', 'data-ui-action="daily-reward"', 1)}
+          ${eventPanelButton('BOSS', 'Eclipse Warden', 'data-prepare-mode="boss"')}
+          ${eventPanelButton('FEST', 'Shadow Fest', 'data-ui-action="play-modes"')}
+          ${eventPanelButton('MORE', 'More Systems', 'data-ui-action="more"')}
         </aside>
 
         <div class="lobby-v2-nameplate glass-panel" aria-live="polite">
@@ -138,7 +138,7 @@ export function renderLobbyModeOverlay(props: LobbyProps): string {
           </div>
           <div class="lobby-v2-brand" aria-label="Shadow Requiem"><strong>SHADOW REQUIEM</strong><span>${activeWeapon.name}</span></div>
           <div class="lobby-v2-system-row" aria-label="Close mode selection">
-            ${systemButton('Back', 'menu')}
+            ${systemButton('Back', 'menu', undefined, 'back')}
           </div>
         </header>
 
@@ -582,16 +582,16 @@ function resourceHudPill(kind: 'gold' | 'gem' | 'energy', value: number, ariaLab
   return `<span class="lobby-v2-resource ${kind}" aria-label="${ariaLabel}: ${value}"><i aria-hidden="true"></i><strong>${value}</strong></span>`;
 }
 
-function systemButton(label: string, action: string, badge?: number): string {
-  return `<button class="lobby-v2-system-button" type="button" data-ui-action="${action}" aria-label="${label}"><span>${label}</span>${badge ? `<i>${badge}</i>` : ''}</button>`;
+function systemButton(label: string, action: string, badge?: number, glyph = label.toLowerCase()): string {
+  return `<button class="lobby-v2-system-button" type="button" data-ui-action="${action}" aria-label="${label}"><span class="system-glyph system-glyph-${glyph}" aria-hidden="true"></span><strong class="sr-only">${label}</strong>${badge ? `<i>${badge}</i>` : ''}</button>`;
 }
 
-function sideMenuButton(label: string, copy: string, action: string): string {
-  return `<button class="lobby-v2-menu-button" type="button" data-ui-action="${action}"><span class="menu-glyph" aria-hidden="true"></span><strong>${label}</strong><small>${copy}</small><b aria-hidden="true">›</b></button>`;
+function sideMenuButton(label: string, copy: string, dataAttrs: string): string {
+  return `<button class="lobby-v2-menu-button" type="button" ${dataAttrs}><span class="menu-glyph" aria-hidden="true"></span><strong>${label}</strong><small>${copy}</small><b aria-hidden="true">›</b></button>`;
 }
 
-function eventPanelButton(label: string, copy: string, action: string, badge?: number): string {
-  return `<button class="lobby-v2-event-button" type="button" data-ui-action="${action}"><span class="event-glyph" aria-hidden="true"></span><strong>${label}</strong><small>${copy}</small>${badge ? `<i>${badge}</i>` : ''}<b aria-hidden="true">›</b></button>`;
+function eventPanelButton(label: string, copy: string, dataAttrs: string, badge?: number): string {
+  return `<button class="lobby-v2-event-button" type="button" ${dataAttrs}><span class="event-glyph" aria-hidden="true"></span><strong>${label}</strong><small>${copy}</small>${badge ? `<i>${badge}</i>` : ''}<b aria-hidden="true">›</b></button>`;
 }
 
 function portraitMarkup(character: CharacterData): string {
