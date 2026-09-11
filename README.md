@@ -59,8 +59,9 @@ The UI has been rebuilt around **one screen = one purpose** instead of one large
 - Shadow-specific lobby treatment with darker lighting/music layer and heavier aura
 - Compact top-left profile with avatar, level, rank, and EXP bar
 - Compact top-right currency, mail badge, and settings controls
-- Huge PLAY button that opens a compact STORY / DUNGEON / BOSS / ARENA / EVENT mode overlay
-- Fixed 5-item bottom navigation: HOME / HEROES / INVENTORY / MISSIONS / MORE
+- Rebuilt landscape lobby structure with compact top HUD, vertical left menu, vertical right events panel, bottom navigation, and a large bottom-right START button
+- START opens a compact STORY / DUNGEON / BOSS / ARENA / EVENT mode overlay
+- Fixed 5-item bottom navigation: HOME / HEROES / INVENTORY / MISSIONS / MORE with non-placeholder geometric glyphs
 - Separate character screen with carousel portraits and tabs: Overview, Skills, Equipment, Talents, Stats
 - Separate inventory screen with category tabs and grid items
 - Separate mission screen with Story/Daily/Weekly/Boss/Dungeon/Event tabs

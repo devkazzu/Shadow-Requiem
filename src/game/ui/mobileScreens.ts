@@ -68,49 +68,58 @@ export interface VictoryScreenProps {
 export function renderMainLobby(props: LobbyProps): string {
   const { profile, activeCharacter, activeWeapon, message, hasSave } = props;
   const roster = props.roster?.length ? props.roster : [activeCharacter];
-  const nextMission = profile.lastMissionId || 'awakening';
   return mobileFrame(
     'home',
     `
-      <section class="lobby-layout" aria-label="Nocturne Garden 3D lobby">
-        <header class="lobby-topbar">
+      <section class="lobby-layout lobby-v2" aria-label="Nocturne Garden 3D lobby">
+        <header class="lobby-v2-top-hud" aria-label="Player and game status">
           ${profileBlock(profile, activeCharacter)}
-          <div class="top-currency-row lobby-currencies">
-            ${currencyPill('G', profile.gold, 'Gold')}
-            ${currencyPill('N', profile.inventory.nullFragment ?? 0, 'Premium currency')}
-            <button class="icon-chip has-badge" type="button" data-ui-action="mail" aria-label="Open mail"><span>MAIL</span><i>3</i></button>
-            <button class="icon-chip" type="button" data-ui-action="settings" aria-label="Open settings"><span>SET</span></button>
+          <div class="lobby-v2-resource-row" aria-label="Currencies">
+            ${resourceHudPill('gold', profile.gold, 'Gold')}
+            ${resourceHudPill('gem', profile.inventory.nullFragment ?? 0, 'Premium currency')}
+            ${resourceHudPill('energy', 120, 'Energy')}
+          </div>
+          <div class="lobby-v2-brand" aria-label="Shadow Requiem"><strong>SHADOW REQUIEM</strong><span>Nocturne Garden HQ</span></div>
+          <div class="lobby-v2-system-row" aria-label="Social and settings">
+            ${systemButton('Squad', 'more')}
+            ${systemButton('Mail', 'mail', 3)}
+            ${systemButton('Settings', 'settings')}
           </div>
         </header>
 
-        <aside class="lobby-event-banner glass-panel" aria-label="Featured event">
-          <span>NEW EVENT</span>
-          <strong>THE ECLIPSE AWAKENS</strong>
-          <small>Boss anomaly detected</small>
+        <aside class="lobby-v2-left-menu" aria-label="Lobby menu">
+          ${sideMenuButton('SHOP', 'Prototype store', 'shop')}
+          ${sideMenuButton('HEROES', 'Roster', 'characters')}
+          ${sideMenuButton('LOADOUT', 'Weapons', 'inventory')}
+          ${sideMenuButton('MISSIONS', 'Quest board', 'missions')}
+          ${sideMenuButton('EVENTS', 'Limited modes', 'play-modes')}
         </aside>
 
-        <nav class="lobby-hero-rail" aria-label="Quick hero select">
+        <nav class="lobby-v2-hero-select" aria-label="Lobby hero selector">
           ${roster.map((character) => portraitButton(character, character.id === activeCharacter.id, `data-character-id="${character.id}"`)).join('')}
         </nav>
 
-        <div class="lobby-nameplate glass-panel" aria-live="polite">
+        <aside class="lobby-v2-event-panel" aria-label="Events and notifications">
+          ${eventPanelButton('EVENT', 'The Eclipse Awakens', 'play-modes', 1)}
+          ${eventPanelButton('DAILY', 'Daily Login', 'daily-reward', 1)}
+          ${eventPanelButton('FEST', 'Shadow Fest', 'play-modes')}
+          ${eventPanelButton('MAIL', 'System Mail', 'mail', 3)}
+          ${eventPanelButton('MORE', 'More Systems', 'more')}
+        </aside>
+
+        <div class="lobby-v2-nameplate glass-panel" aria-live="polite">
           <span class="screen-kicker">${activeCharacter.rarity} · ${activeCharacter.role}</span>
           <h1>${activeCharacter.codename}</h1>
           <p>${activeCharacter.displayName} · ${activeWeapon.name}</p>
         </div>
 
-        <div class="lobby-utility-stack" aria-label="Lobby utilities">
-          <button class="lobby-utility" type="button" data-ui-action="daily-reward"><strong>DAILY</strong><span class="notify-dot">1</span></button>
-          <button class="lobby-utility" type="button" data-ui-action="mail"><strong>MAIL</strong><span class="notify-dot">3</span></button>
-        </div>
-
+        <div class="lobby-v2-chat glass-panel" aria-label="World chat preview"><strong>[World]</strong><span>Team invite available</span></div>
         ${message ? `<div class="lobby-message glass-panel">${message}</div>` : ''}
-        <div class="lobby-touch-hint">Drag hero to rotate · Pinch zoom · Double tap reset</div>
-        <button class="play-button lobby-play" type="button" data-ui-action="play-modes">PLAY</button>
-        <button class="quick-start-button" type="button" data-prepare-mission-id="${nextMission}">${hasSave ? 'QUICK START' : 'TUTORIAL'}</button>
+        <div class="lobby-touch-hint">Drag character to rotate · Pinch zoom · Double tap reset</div>
+        <button class="lobby-v2-start" type="button" data-ui-action="play-modes" aria-label="Start battle mode selection"><span>START</span><small>${hasSave ? 'Mode Select' : 'Tutorial Ready'}</small></button>
       </section>
     `,
-    'lobby-home-screen'
+    'lobby-home-screen lobby-v2-screen'
   );
 }
 
@@ -119,24 +128,24 @@ export function renderLobbyModeOverlay(props: LobbyProps): string {
   return mobileFrame(
     'home',
     `
-      <section class="lobby-layout lobby-mode-open" aria-label="Select game mode">
-        <header class="lobby-topbar">
+      <section class="lobby-layout lobby-v2 lobby-mode-open" aria-label="Select game mode">
+        <header class="lobby-v2-top-hud" aria-label="Player and game status">
           ${profileBlock(profile, activeCharacter)}
-          <div class="top-currency-row lobby-currencies">
-            ${currencyPill('G', profile.gold, 'Gold')}
-            ${currencyPill('N', profile.inventory.nullFragment ?? 0, 'Premium currency')}
-            <button class="icon-chip" type="button" data-ui-action="menu" aria-label="Close mode selection"><span>BACK</span></button>
+          <div class="lobby-v2-resource-row" aria-label="Currencies">
+            ${resourceHudPill('gold', profile.gold, 'Gold')}
+            ${resourceHudPill('gem', profile.inventory.nullFragment ?? 0, 'Premium currency')}
+            ${resourceHudPill('energy', 120, 'Energy')}
+          </div>
+          <div class="lobby-v2-brand" aria-label="Shadow Requiem"><strong>SHADOW REQUIEM</strong><span>${activeWeapon.name}</span></div>
+          <div class="lobby-v2-system-row" aria-label="Close mode selection">
+            ${systemButton('Back', 'menu')}
           </div>
         </header>
-        <div class="lobby-nameplate compact glass-panel">
-          <span class="screen-kicker">Deploying</span>
-          <h1>${activeCharacter.codename}</h1>
-          <p>${activeWeapon.name}</p>
-        </div>
-        <section class="mode-select-overlay glass-panel" aria-label="Game modes">
+
+        <section class="mode-select-overlay lobby-v2-mode-panel glass-panel" aria-label="Game modes">
           <div class="mode-select-head">
-            <span class="screen-kicker">PLAY</span>
-            <h2>Select Mode</h2>
+            <span class="screen-kicker">START</span>
+            <h2>Select Battle Mode</h2>
             <button class="back-chip" type="button" data-ui-action="menu">Close</button>
           </div>
           <div class="mode-tile-grid">
@@ -149,7 +158,7 @@ export function renderLobbyModeOverlay(props: LobbyProps): string {
         </section>
       </section>
     `,
-    'lobby-home-screen'
+    'lobby-home-screen lobby-v2-screen'
   );
 }
 
@@ -539,14 +548,14 @@ function mobileFrame(activeNav: BottomNavId, content: string, extraClass = ''): 
 }
 
 function bottomNav(active: BottomNavId): string {
-  const items: [BottomNavId, string, string][] = [
-    ['home', 'HOME', 'menu'],
-    ['characters', 'HEROES', 'characters'],
-    ['inventory', 'INVENTORY', 'inventory'],
-    ['missions', 'MISSIONS', 'missions'],
-    ['more', 'MORE', 'more']
+  const items: [BottomNavId, string, string, string][] = [
+    ['home', 'HOME', 'menu', 'home'],
+    ['characters', 'HEROES', 'characters', 'heroes'],
+    ['inventory', 'INVENTORY', 'inventory', 'inventory'],
+    ['missions', 'MISSIONS', 'missions', 'missions'],
+    ['more', 'MORE', 'more', 'more']
   ];
-  return `<nav class="bottom-nav" aria-label="Primary game navigation">${items.map(([id, label, action]) => `<button class="bottom-nav-item ${id === active ? 'active' : ''}" type="button" data-ui-action="${action}"><span>${label[0]}</span><strong>${label}</strong></button>`).join('')}</nav>`;
+  return `<nav class="bottom-nav" aria-label="Primary game navigation">${items.map(([id, label, action, icon]) => `<button class="bottom-nav-item ${id === active ? 'active' : ''}" type="button" data-ui-action="${action}"><span class="nav-glyph nav-glyph-${icon}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</nav>`;
 }
 
 function profileBlock(profile: PlayerProfile, character: CharacterData): string {
@@ -567,6 +576,22 @@ function currencyPill(label: string, value: number, ariaLabel = label): string {
 
 function modeTile(title: string, copy: string, actionLabel: string, dataAttrs: string, disabled = false): string {
   return `<button class="mode-tile ${disabled ? 'locked' : ''}" type="button" ${dataAttrs} ${disabled ? 'disabled' : ''}><span>${title}</span><strong>${actionLabel}</strong><small>${copy}</small></button>`;
+}
+
+function resourceHudPill(kind: 'gold' | 'gem' | 'energy', value: number, ariaLabel: string): string {
+  return `<span class="lobby-v2-resource ${kind}" aria-label="${ariaLabel}: ${value}"><i aria-hidden="true"></i><strong>${value}</strong></span>`;
+}
+
+function systemButton(label: string, action: string, badge?: number): string {
+  return `<button class="lobby-v2-system-button" type="button" data-ui-action="${action}" aria-label="${label}"><span>${label}</span>${badge ? `<i>${badge}</i>` : ''}</button>`;
+}
+
+function sideMenuButton(label: string, copy: string, action: string): string {
+  return `<button class="lobby-v2-menu-button" type="button" data-ui-action="${action}"><span class="menu-glyph" aria-hidden="true"></span><strong>${label}</strong><small>${copy}</small><b aria-hidden="true">›</b></button>`;
+}
+
+function eventPanelButton(label: string, copy: string, action: string, badge?: number): string {
+  return `<button class="lobby-v2-event-button" type="button" data-ui-action="${action}"><span class="event-glyph" aria-hidden="true"></span><strong>${label}</strong><small>${copy}</small>${badge ? `<i>${badge}</i>` : ''}<b aria-hidden="true">›</b></button>`;
 }
 
 function portraitMarkup(character: CharacterData): string {

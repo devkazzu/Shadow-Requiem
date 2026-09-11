@@ -4,7 +4,7 @@
 
 ### Added
 
-- Rebuilt the main home screen as a transparent full-screen 3D Nocturne Garden HQ lobby with animated environment, interactive center hero, hero switching, compact profile/currency chrome, daily/mail buttons, huge PLAY button, and compact mode-selection overlay.
+- Rebuilt the main home screen as a transparent full-screen 3D Nocturne Garden HQ lobby with animated environment, interactive center hero, hero switching, compact top HUD, vertical left menu, vertical right event panel, bottom navigation with geometric glyphs, large bottom-right START button, and compact mode-selection overlay.
 - Mobile-first UI rebuild: cinematic lobby, fixed bottom navigation, separate one-purpose screens, tabbed character/inventory/mission/settings panels, battle preparation, full-screen map, More hub, compact popups, and landscape combat HUD adjustments.
 - Independent mobile screen renderers in `src/game/ui/mobileScreens.ts`.
 - Installed UI/UX Pro Max skill for local design guidance.
