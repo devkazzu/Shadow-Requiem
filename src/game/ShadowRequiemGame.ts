@@ -16,16 +16,20 @@ import {
 import { SaveManager, createNewSave } from './systems/save';
 import {
   type CharacterTab,
+  type GeneratedModeId,
   type InventoryTab,
   type MissionTab,
   type SettingsTab,
   renderArchiveScreen,
   renderBattlePrepScreen,
   renderCharacterScreen as renderMobileCharacterScreen,
+  renderDailyRewardScreen,
   renderDefeatScreen,
   renderGardenScreen,
   renderHelpScreen,
   renderInventoryScreen as renderMobileInventoryScreen,
+  renderLobbyModeOverlay,
+  renderMailScreen,
   renderMainLobby,
   renderMapScreen as renderMobileMapScreen,
   renderMissionScreen as renderMobileMissionScreen,
@@ -59,6 +63,10 @@ type UIAction =
   | 'archive'
   | 'settings'
   | 'help'
+  | 'daily-reward'
+  | 'mail'
+  | 'play-modes'
+  | 'lobby-inspect'
   | 'menu'
   | 'intro-next'
   | 'intro-skip'
@@ -222,6 +230,21 @@ export class ShadowRequiemGame {
   private ultimateDidImpact = false;
   private lastFrameSecond = 0;
   private enemySerial = 0;
+  private arenaRoot!: THREE.Group;
+  private lobbyRoot!: THREE.Group;
+  private lobbyHero: THREE.Group | null = null;
+  private lobbyParticles: THREE.Mesh[] = [];
+  private lobbyAnimatedObjects: THREE.Object3D[] = [];
+  private lobbyPointerId: number | null = null;
+  private lobbyPointers = new Map<number, { x: number; y: number }>();
+  private lobbyPinchDistance = 0;
+  private lobbyPinchZoomStart = 1;
+  private lobbyHeroYaw = Math.PI;
+  private lobbyZoom = 1;
+  private lobbyPointerMoved = false;
+  private lobbyLastTapAt = 0;
+  private lobbyInspectUntil = 0;
+  private lobbyHeroEntranceAt = 0;
   private characterTab: CharacterTab = 'OVERVIEW';
   private inventoryTab: InventoryTab = 'WEAPONS';
   private missionTab: MissionTab = 'STORY';
@@ -265,7 +288,8 @@ export class ShadowRequiemGame {
     this.buildShell();
     this.setupThree();
     this.bindEvents();
-    this.showMenu();
+    this.showLoadingScreen();
+    window.setTimeout(() => this.showMenu(), 680);
     this.animationFrame = window.requestAnimationFrame((time) => this.loop(time));
   }
 
@@ -438,9 +462,18 @@ export class ShadowRequiemGame {
     rim.position.set(0, 6, -8);
     this.scene.add(rim);
 
+    this.lobbyRoot = new THREE.Group();
+    this.lobbyRoot.name = 'Nocturne Garden HQ lobby';
+    this.scene.add(this.lobbyRoot);
+    this.arenaRoot = new THREE.Group();
+    this.arenaRoot.name = 'Combat arena';
+    this.scene.add(this.arenaRoot);
+
+    this.createLobbyEnvironment();
     this.createArena();
     this.createWaypointMarker();
     this.createPlayer();
+    this.setSceneMode('lobby');
     this.resize();
   }
 
@@ -496,7 +529,7 @@ export class ShadowRequiemGame {
         return;
       }
       if (button.dataset.prepareMode) {
-        this.prepareGeneratedMode(button.dataset.prepareMode as 'dungeon' | 'arena' | 'training');
+        this.prepareGeneratedMode(button.dataset.prepareMode as GeneratedModeId);
         return;
       }
       if (button.dataset.launchPrepared) {
@@ -504,7 +537,9 @@ export class ShadowRequiemGame {
         return;
       }
       if (button.dataset.characterId) {
-        this.setActiveCharacter(button.dataset.characterId, true);
+        const cameFromLobby = this.screen === 'menu';
+        this.setActiveCharacter(button.dataset.characterId, this.screen === 'character');
+        if (cameFromLobby) this.showMenu();
         return;
       }
       if (button.dataset.characterTab) {
@@ -590,24 +625,35 @@ export class ShadowRequiemGame {
     this.refs.joystickZone.addEventListener('pointercancel', endJoystick);
 
     this.refs.sceneHost.addEventListener('pointerdown', (event) => {
-      if (this.screen !== 'playing') return;
-      this.lookPointerId = event.pointerId;
-      this.lastLookX = event.clientX;
-      this.lastLookY = event.clientY;
-      this.refs.sceneHost.setPointerCapture(event.pointerId);
+      if (this.screen === 'playing') {
+        this.lookPointerId = event.pointerId;
+        this.lastLookX = event.clientX;
+        this.lastLookY = event.clientY;
+        this.refs.sceneHost.setPointerCapture(event.pointerId);
+        return;
+      }
+      if (this.isLobbyInteractive()) this.beginLobbyPointer(event);
     });
     this.refs.sceneHost.addEventListener('pointermove', (event) => {
-      if (event.pointerId !== this.lookPointerId || this.screen !== 'playing') return;
-      const sensitivity = this.profile.settings.cameraSensitivity;
-      const dx = event.clientX - this.lastLookX;
-      const dy = event.clientY - this.lastLookY;
-      this.lastLookX = event.clientX;
-      this.lastLookY = event.clientY;
-      this.cameraYaw -= dx * 0.0045 * sensitivity;
-      this.cameraPitch = clamp(this.cameraPitch + dy * 0.0022 * sensitivity, 0.12, 0.72);
+      if (this.screen === 'playing') {
+        if (event.pointerId !== this.lookPointerId) return;
+        const sensitivity = this.profile.settings.cameraSensitivity;
+        const dx = event.clientX - this.lastLookX;
+        const dy = event.clientY - this.lastLookY;
+        this.lastLookX = event.clientX;
+        this.lastLookY = event.clientY;
+        this.cameraYaw -= dx * 0.0045 * sensitivity;
+        this.cameraPitch = clamp(this.cameraPitch + dy * 0.0022 * sensitivity, 0.12, 0.72);
+        return;
+      }
+      if (this.isLobbyInteractive()) this.moveLobbyPointer(event);
     });
     const endLook = (event: PointerEvent): void => {
-      if (event.pointerId === this.lookPointerId) this.lookPointerId = null;
+      if (this.screen === 'playing') {
+        if (event.pointerId === this.lookPointerId) this.lookPointerId = null;
+        return;
+      }
+      if (this.isLobbyInteractive()) this.endLobbyPointer(event);
     };
     this.refs.sceneHost.addEventListener('pointerup', endLook);
     this.refs.sceneHost.addEventListener('pointercancel', endLook);
@@ -616,7 +662,7 @@ export class ShadowRequiemGame {
   private async handleUIAction(action: UIAction): Promise<void> {
     await this.audio.resume();
     this.audio.click();
-    this.audio.startMusic('menu');
+    this.audio.startMusic(this.profile.activeCharacterId === 'shadow' ? 'shadow' : 'menu');
 
     switch (action) {
       case 'new-game':
@@ -663,6 +709,18 @@ export class ShadowRequiemGame {
       case 'help':
         this.showHelp();
         break;
+      case 'daily-reward':
+        this.showDailyRewardScreen();
+        break;
+      case 'mail':
+        this.showMailScreen();
+        break;
+      case 'play-modes':
+        this.showLobbyModeSelection();
+        break;
+      case 'lobby-inspect':
+        this.triggerLobbyInteraction();
+        break;
       case 'menu':
         this.persist();
         this.showMenu();
@@ -685,7 +743,8 @@ export class ShadowRequiemGame {
         break;
       case 'retry':
         if (this.currentMission?.id === 'abyss-dungeon-run') this.startGeneratedMission('dungeon');
-        else if (this.currentMission?.id === 'arena-boss-rush') this.startGeneratedMission('arena');
+        else if (this.currentMission?.id === 'arena-boss-rush') this.startGeneratedMission('boss');
+        else if (this.currentMission?.id === 'arena-skirmish') this.startGeneratedMission('arena');
         else if (this.currentMission?.id === 'training-simulation') this.startGeneratedMission('training');
         else this.startMission(this.currentMission?.id ?? this.profile.lastMissionId ?? 'awakening');
         break;
@@ -764,20 +823,42 @@ export class ShadowRequiemGame {
     }
   }
 
+  private showLoadingScreen(): void {
+    this.screen = 'menu';
+    this.setCombatUI(false);
+    this.setSceneMode('lobby');
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.classList.remove('lobby-overlay');
+    this.refs.overlay.innerHTML = `
+      <div class="mobile-screen loading-screen">
+        <section class="loading-mark glass-panel">
+          <span class="screen-kicker">Original Anime Action RPG</span>
+          <h1>SHADOW REQUIEM</h1>
+          <p>Loading Nocturne Garden HQ</p>
+          <div class="loading-bar"><span></span></div>
+        </section>
+      </div>
+    `;
+  }
+
   private showMenu(message?: string): void {
     this.screen = 'menu';
     this.setCombatUI(false);
+    this.setSceneMode('lobby');
+    this.refs.overlay.classList.add('lobby-overlay');
     this.refs.overlay.classList.remove('hidden');
     const loadedSave = this.saveManager.load();
     const hasSave = loadedSave !== null;
     if (loadedSave) {
       this.saveData = loadedSave;
       this.profile = loadedSave.profile;
+      this.setSceneMode('lobby');
     }
     this.refs.overlay.innerHTML = renderMainLobby({
       profile: this.profile,
       activeCharacter: this.getActiveCharacter(),
       activeWeapon: this.getActiveWeapon(),
+      roster: Object.values(characters).filter((character) => this.profile.unlockedCharacters.includes(character.id)),
       hasSave,
       message,
       activeNav: 'home'
@@ -787,8 +868,41 @@ export class ShadowRequiemGame {
   private showHelp(): void {
     this.screen = 'more';
     this.setCombatUI(false);
+    this.refs.overlay.classList.remove('lobby-overlay');
     this.refs.overlay.classList.remove('hidden');
     this.refs.overlay.innerHTML = renderHelpScreen();
+  }
+
+  private showLobbyModeSelection(): void {
+    this.screen = 'menu';
+    this.setCombatUI(false);
+    this.setSceneMode('lobby');
+    this.refs.overlay.classList.add('lobby-overlay');
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = renderLobbyModeOverlay({
+      profile: this.profile,
+      activeCharacter: this.getActiveCharacter(),
+      activeWeapon: this.getActiveWeapon(),
+      roster: Object.values(characters).filter((character) => this.profile.unlockedCharacters.includes(character.id)),
+      hasSave: this.saveManager.hasSave(),
+      activeNav: 'home'
+    });
+  }
+
+  private showDailyRewardScreen(): void {
+    this.screen = 'daily';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('lobby-overlay');
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = renderDailyRewardScreen(this.profile);
+  }
+
+  private showMailScreen(): void {
+    this.screen = 'mail';
+    this.setCombatUI(false);
+    this.refs.overlay.classList.remove('lobby-overlay');
+    this.refs.overlay.classList.remove('hidden');
+    this.refs.overlay.innerHTML = renderMailScreen();
   }
 
   private showMissionsScreen(): void {
@@ -1035,7 +1149,7 @@ export class ShadowRequiemGame {
     this.showBattlePrepScreen();
   }
 
-  private prepareGeneratedMode(kind: 'dungeon' | 'arena' | 'training'): void {
+  private prepareGeneratedMode(kind: GeneratedModeId): void {
     this.preparedMission = this.createGeneratedMission(kind);
     this.preparedCheckpointMissionId = this.profile.lastMissionId || 'awakening';
     this.selectedTeamSlot = 0;
@@ -1087,13 +1201,13 @@ export class ShadowRequiemGame {
     this.beginMission(mission, mission.id);
   }
 
-  private startGeneratedMission(kind: 'dungeon' | 'arena' | 'training'): void {
+  private startGeneratedMission(kind: GeneratedModeId): void {
     this.beginMission(this.createGeneratedMission(kind), this.profile.lastMissionId || 'awakening');
   }
 
-  private createGeneratedMission(kind: 'dungeon' | 'arena' | 'training'): MissionData {
+  private createGeneratedMission(kind: GeneratedModeId): MissionData {
     const randomEnemy = () => ['shadow-cultist', 'eclipsed-arcanist', 'null-guard'][Math.floor(Math.random() * 3)];
-    return kind === 'arena'
+    return kind === 'boss'
       ? {
           id: 'arena-boss-rush',
           chapter: 'Arena — Boss Rush',
@@ -1110,8 +1224,24 @@ export class ShadowRequiemGame {
             { type: 'wave', objective: 'Finish the Eclipse Warden boss rush.', spawns: [{ enemyId: 'eclipse-warden', x: 0, z: -15 }] }
           ]
         }
-      : kind === 'training'
+      : kind === 'arena'
         ? {
+            id: 'arena-skirmish',
+            chapter: 'Arena — Skirmish',
+            title: 'Midnight Rank Trial',
+            recommendedLevel: this.profile.level,
+            difficulty: 'Fast',
+            narrative: 'A short mobile arena skirmish designed for one-tap entry, quick waves, and skill rotation practice.',
+            rewards: { xp: 110, gold: 95, skillPoints: 0, materials: { shadowShard: 4, trainingSigil: 1 } },
+            nextMission: this.profile.lastMissionId || 'shadow-trace',
+            steps: [
+              { type: 'waypoint', objective: 'Enter the ranked combat circle.', marker: { x: 0, z: -5 } },
+              { type: 'wave', objective: 'Clear the first arena wave.', spawns: [{ enemyId: 'shadow-cultist', x: -4, z: -9 }, { enemyId: 'eclipsed-arcanist', x: 4, z: -10 }] },
+              { type: 'wave', objective: 'Defeat the arena enforcer.', spawns: [{ enemyId: 'null-guard', x: 0, z: -12 }, { enemyId: 'shadow-cultist', x: -5, z: -13 }] }
+            ]
+          }
+        : kind === 'training'
+          ? {
             id: 'training-simulation',
             chapter: 'Nocturne Garden — Training Room',
             title: 'Infinite Edge Calibration',
@@ -1247,9 +1377,14 @@ export class ShadowRequiemGame {
     }
     this.syncPlayerStatsFromProfile(true);
     this.rebuildPlayerModel(true);
+    this.syncLobbyHero();
     this.updateCombatButtonLabels();
     this.renderPartyBar();
     this.persist();
+    if (this.screen === 'menu') {
+      this.audio.stopMusic();
+      this.audio.startMusic(character.id === 'shadow' ? 'shadow' : 'menu');
+    }
     if (redrawCharacterScreen) this.showCharacterScreen();
   }
 
@@ -1312,16 +1447,382 @@ export class ShadowRequiemGame {
     this.refs.overlay.innerHTML = renderDefeatScreen();
   }
 
+  private createLobbyEnvironment(): void {
+    const root = this.lobbyRoot;
+    root.clear();
+    this.lobbyParticles = [];
+    this.lobbyAnimatedObjects = [];
+
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: '#080816', emissive: '#090021', emissiveIntensity: 0.35, metalness: 0.52, roughness: 0.34 });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(46, 34), floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    root.add(floor);
+
+    const runway = new THREE.Mesh(new THREE.PlaneGeometry(8, 30), new THREE.MeshBasicMaterial({ color: '#2e1065', transparent: true, opacity: 0.18 }));
+    runway.rotation.x = -Math.PI / 2;
+    runway.position.y = 0.018;
+    root.add(runway);
+
+    const sigilMaterial = new THREE.MeshBasicMaterial({ color: '#8b5cf6', transparent: true, opacity: 0.42, side: THREE.DoubleSide });
+    for (const radius of [2.2, 3.2, 4.25]) {
+      const sigil = new THREE.Mesh(new THREE.RingGeometry(radius, radius + 0.035, 96), sigilMaterial.clone());
+      sigil.rotation.x = -Math.PI / 2;
+      sigil.position.y = 0.04 + radius * 0.002;
+      sigil.userData.spinY = radius % 2 === 0 ? 0.08 : -0.05;
+      root.add(sigil);
+      this.lobbyAnimatedObjects.push(sigil);
+    }
+
+    const wallMaterial = new THREE.MeshStandardMaterial({ color: '#0d1022', emissive: '#030617', emissiveIntensity: 0.45, metalness: 0.2, roughness: 0.62 });
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(46, 12, 0.8), wallMaterial);
+    backWall.position.set(0, 6, -15.8);
+    backWall.receiveShadow = true;
+    root.add(backWall);
+
+    const sideWallMaterial = wallMaterial.clone();
+    sideWallMaterial.color = new THREE.Color('#080b1a');
+    for (const x of [-22.5, 22.5]) {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 10, 34), sideWallMaterial);
+      sideWall.position.set(x, 5, 0);
+      sideWall.receiveShadow = true;
+      root.add(sideWall);
+    }
+
+    const moonMaterial = new THREE.MeshBasicMaterial({ color: '#dbeafe', transparent: true, opacity: 0.86 });
+    const moon = new THREE.Mesh(new THREE.CircleGeometry(2.9, 48), moonMaterial);
+    moon.position.set(0, 8.6, -15.32);
+    root.add(moon);
+
+    const windowMaterial = new THREE.MeshBasicMaterial({ color: '#60a5fa', transparent: true, opacity: 0.23, side: THREE.DoubleSide });
+    for (const x of [-14, -7, 7, 14]) {
+      const windowPane = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 7.2), windowMaterial.clone());
+      windowPane.position.set(x, 5.8, -15.28);
+      windowPane.userData.pulse = 0.1 + Math.random() * 0.12;
+      root.add(windowPane);
+      this.lobbyAnimatedObjects.push(windowPane);
+    }
+
+    const columnMaterial = new THREE.MeshStandardMaterial({ color: '#111827', emissive: '#170a35', emissiveIntensity: 0.6, metalness: 0.36, roughness: 0.48 });
+    for (const x of [-17.5, -11.5, 11.5, 17.5]) {
+      for (const z of [-10, -2, 7]) {
+        const column = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 8.6, 8), columnMaterial);
+        column.position.set(x, 4.3, z);
+        column.castShadow = true;
+        column.receiveShadow = true;
+        root.add(column);
+        const band = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.03, 8, 32), new THREE.MeshBasicMaterial({ color: '#7c3aed', transparent: true, opacity: 0.55 }));
+        band.position.set(x, 2.2, z);
+        band.rotation.x = Math.PI / 2;
+        band.userData.spinZ = x > 0 ? 0.45 : -0.45;
+        root.add(band);
+        this.lobbyAnimatedObjects.push(band);
+      }
+    }
+
+    const balconyMaterial = new THREE.MeshStandardMaterial({ color: '#0f172a', emissive: '#020617', emissiveIntensity: 0.28, metalness: 0.42, roughness: 0.54 });
+    for (const z of [-11.8, 9.8]) {
+      const balcony = new THREE.Mesh(new THREE.BoxGeometry(38, 0.42, 1.2), balconyMaterial);
+      balcony.position.set(0, 3.15, z);
+      balcony.castShadow = true;
+      balcony.receiveShadow = true;
+      root.add(balcony);
+    }
+
+    const displayMaterial = new THREE.MeshStandardMaterial({ color: '#111124', emissive: '#2e1065', emissiveIntensity: 0.5, metalness: 0.55, roughness: 0.36 });
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i += 1) {
+        const z = -8 + i * 4.2;
+        const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.72, 0.72, 8), displayMaterial);
+        plinth.position.set(side * 8.2, 0.36, z);
+        plinth.castShadow = true;
+        root.add(plinth);
+        const weapon = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.75, 0.08), new THREE.MeshStandardMaterial({ color: '#e0f2fe', emissive: i % 2 ? '#7c3aed' : '#22d3ee', emissiveIntensity: 0.7, metalness: 0.72, roughness: 0.2 }));
+        weapon.position.set(side * 8.2, 1.7, z);
+        weapon.rotation.z = side * 0.3;
+        weapon.userData.floatBaseY = 1.7;
+        weapon.userData.floatAmp = 0.08;
+        weapon.userData.spinY = side * 0.45;
+        root.add(weapon);
+        this.lobbyAnimatedObjects.push(weapon);
+      }
+    }
+
+    const crystalMaterial = new THREE.MeshBasicMaterial({ color: '#a78bfa', transparent: true, opacity: 0.72 });
+    for (let i = 0; i < 7; i += 1) {
+      const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.28 + (i % 3) * 0.08), crystalMaterial.clone());
+      crystal.position.set(-7.5 + i * 2.5, 4.2 + (i % 2) * 0.9, -7 - (i % 3) * 1.4);
+      crystal.userData.floatBaseY = crystal.position.y;
+      crystal.userData.floatAmp = 0.18;
+      crystal.userData.spinY = 0.5 + i * 0.08;
+      root.add(crystal);
+      this.lobbyAnimatedObjects.push(crystal);
+    }
+
+    const npcMaterial = new THREE.MeshToonMaterial({ color: '#111827' });
+    for (let i = 0; i < 8; i += 1) {
+      const npc = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.9, 6), npcMaterial);
+      body.position.y = 0.45;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), npcMaterial);
+      head.position.y = 1.02;
+      npc.add(body, head);
+      npc.position.set(-15 + i * 4.4, 3.55, i % 2 ? 9.8 : -11.8);
+      npc.scale.setScalar(0.75);
+      npc.userData.baseX = npc.position.x;
+      npc.userData.range = 0.8 + (i % 3) * 0.35;
+      npc.userData.speed = 0.24 + i * 0.03;
+      npc.userData.phase = i * 1.7;
+      root.add(npc);
+      this.lobbyAnimatedObjects.push(npc);
+    }
+
+    const particleGeometry = new THREE.SphereGeometry(0.035, 6, 4);
+    for (let i = 0; i < 96; i += 1) {
+      const material = new THREE.MeshBasicMaterial({ color: i % 4 === 0 ? '#f43f5e' : i % 3 === 0 ? '#22d3ee' : '#a78bfa', transparent: true, opacity: 0.36 });
+      const particle = new THREE.Mesh(particleGeometry, material);
+      particle.position.set((Math.random() - 0.5) * 36, Math.random() * 8 + 0.7, (Math.random() - 0.5) * 25 - 1);
+      particle.userData.baseColor = material.color.getHex();
+      particle.userData.seed = Math.random() * Math.PI * 2;
+      particle.userData.speed = 0.08 + Math.random() * 0.22;
+      root.add(particle);
+      this.lobbyParticles.push(particle);
+    }
+
+    const moonLight = new THREE.DirectionalLight('#c7d2fe', 1.55);
+    moonLight.position.set(-4, 9, 8);
+    moonLight.castShadow = true;
+    root.add(moonLight);
+
+    const stageLight = new THREE.SpotLight('#8b5cf6', 95, 25, Math.PI / 5, 0.52, 1.25);
+    stageLight.position.set(0, 8, 5.5);
+    stageLight.target.position.set(0, 1.1, 0);
+    root.add(stageLight, stageLight.target);
+
+    const rimLight = new THREE.PointLight('#f43f5e', 28, 15);
+    rimLight.position.set(3.6, 3.2, 1.8);
+    root.add(rimLight);
+
+    this.syncLobbyHero();
+  }
+
+  private syncLobbyHero(): void {
+    const active = this.getActiveCharacter();
+    if (this.lobbyHero?.userData.characterId === active.id) return;
+    if (this.lobbyHero?.parent) this.lobbyHero.parent.remove(this.lobbyHero);
+    const hero = this.makePlayerModel();
+    hero.name = 'LobbyHero';
+    hero.userData.characterId = active.id;
+    hero.position.set(0, 0, 0);
+    hero.rotation.y = this.lobbyHeroYaw;
+    hero.scale.setScalar(active.id === 'shadow' ? 1.58 : 1.46);
+
+    const visual = active.visuals ?? { accent: '#f43f5e', secondary: '#7c3aed', primary: '#111124' };
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(active.id === 'shadow' ? 1.18 : 1.02, 0.025, 8, 72),
+      new THREE.MeshBasicMaterial({ color: visual.accent, transparent: true, opacity: active.id === 'shadow' ? 0.72 : 0.46, side: THREE.DoubleSide })
+    );
+    halo.name = 'lobbyHeroHalo';
+    halo.position.y = 1.05;
+    halo.rotation.x = Math.PI / 2;
+    hero.add(halo);
+
+    if (active.id === 'shadow') {
+      const shadowAura = new THREE.Mesh(
+        new THREE.SphereGeometry(1.05, 32, 16),
+        new THREE.MeshBasicMaterial({ color: '#05030f', transparent: true, opacity: 0.42, side: THREE.BackSide })
+      );
+      shadowAura.name = 'lobbyShadowAura';
+      shadowAura.position.y = 1.12;
+      shadowAura.scale.set(1.15, 1.55, 1.15);
+      hero.add(shadowAura);
+    }
+
+    this.lobbyRoot.add(hero);
+    this.lobbyHero = hero;
+    this.lobbyHeroEntranceAt = performance.now() / 1000;
+    this.spawnLobbyPulse(visual.accent, 2.8, 0.56);
+  }
+
+  private triggerLobbyInteraction(): void {
+    if (!this.lobbyHero || this.screen !== 'menu') return;
+    const active = this.getActiveCharacter();
+    const visual = active.visuals ?? { accent: '#f43f5e', secondary: '#7c3aed', primary: '#111124' };
+    const now = performance.now() / 1000;
+    this.lobbyInspectUntil = now + 1.35;
+    this.spawnLobbyPulse(visual.accent, active.id === 'shadow' ? 3.8 : 3.1, 0.72);
+    this.toast(active.id === 'shadow' ? 'Shadow: The garden grows darker.' : `${active.codename}: Ready for deployment.`);
+    if (this.profile.settings.vibration && typeof navigator.vibrate === 'function') navigator.vibrate(18);
+    void this.audio.resume().then(() => {
+      this.audio.click();
+      this.audio.stopMusic();
+      this.audio.startMusic(active.id === 'shadow' ? 'shadow' : 'menu');
+    });
+  }
+
+  private spawnLobbyPulse(color: string, finalScale: number, duration: number): void {
+    if (!this.lobbyRoot) return;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.86, 1.02, 72),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+    );
+    ring.position.set(0, 0.075, 0);
+    ring.rotation.x = -Math.PI / 2;
+    this.lobbyRoot.add(ring);
+    this.effects.push({ object: ring, life: duration, maxLife: duration, expand: finalScale, fade: true });
+  }
+
+  private updateLobby(delta: number, now: number): void {
+    this.syncLobbyHero();
+    const active = this.getActiveCharacter();
+    const shadowMode = active.id === 'shadow';
+
+    for (const particle of this.lobbyParticles) {
+      const seed = Number(particle.userData.seed ?? 0);
+      const speed = Number(particle.userData.speed ?? 0.15);
+      particle.position.y += delta * (0.24 + speed);
+      particle.position.x += Math.sin(now * 0.45 + seed) * delta * 0.08;
+      particle.position.z += Math.cos(now * 0.32 + seed) * delta * 0.06;
+      if (particle.position.y > 9.4) particle.position.y = 0.55;
+      const material = particle.material as THREE.MeshBasicMaterial;
+      material.opacity = shadowMode ? 0.22 + Math.sin(now + seed) * 0.08 : 0.32 + Math.sin(now + seed) * 0.08;
+      material.color.set(shadowMode && seed % 2 > 1 ? '#05030f' : Number(particle.userData.baseColor ?? 0xa78bfa));
+    }
+
+    for (const object of this.lobbyAnimatedObjects) {
+      if (object.userData.spinY) object.rotation.y += Number(object.userData.spinY) * delta;
+      if (object.userData.spinZ) object.rotation.z += Number(object.userData.spinZ) * delta;
+      if (object.userData.floatBaseY !== undefined) {
+        object.position.y = Number(object.userData.floatBaseY) + Math.sin(now * 1.2 + Number(object.userData.phase ?? 0)) * Number(object.userData.floatAmp ?? 0.1);
+      }
+      if (object.userData.pulse && object instanceof THREE.Mesh) {
+        const material = object.material as THREE.Material & { opacity?: number };
+        material.opacity = 0.18 + Math.sin(now * 1.7 + Number(object.userData.pulse)) * 0.05;
+      }
+      if (object.userData.baseX !== undefined) {
+        const phase = Number(object.userData.phase ?? 0);
+        const range = Number(object.userData.range ?? 1);
+        object.position.x = Number(object.userData.baseX) + Math.sin(now * Number(object.userData.speed ?? 0.2) + phase) * range;
+        object.rotation.y = Math.sin(now * Number(object.userData.speed ?? 0.2) + phase) > 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+    }
+
+    if (!this.lobbyHero) return;
+    const visual = active.visuals ?? { accent: '#f43f5e', secondary: '#7c3aed', primary: '#111124' };
+    const elapsedEntrance = clamp(now - this.lobbyHeroEntranceAt, 0, 1.2);
+    const entranceEase = 1 - Math.pow(1 - elapsedEntrance / 1.2, 3);
+    const targetScale = shadowMode ? 1.58 : 1.46;
+    const poseBoost = now < this.lobbyInspectUntil ? 0.05 : 0;
+    this.lobbyHero.scale.setScalar(targetScale * (0.82 + entranceEase * 0.18 + poseBoost));
+    this.lobbyHero.position.x = (1 - entranceEase) * 0.8;
+    this.lobbyHero.position.y = Math.sin(now * 1.35) * 0.035;
+    const cinematicSway = now < this.lobbyInspectUntil ? Math.sin(now * 9.5) * 0.08 : Math.sin(now * 0.75) * 0.035;
+    this.lobbyHero.rotation.y = this.lobbyHeroYaw + cinematicSway;
+
+    const weapon = this.lobbyHero.getObjectByName('heroWeapon');
+    if (weapon) {
+      weapon.rotation.z = -0.38 + Math.sin(now * (now < this.lobbyInspectUntil ? 10 : 1.8)) * (now < this.lobbyInspectUntil ? 0.22 : 0.035);
+      weapon.position.y = 1.22 + Math.sin(now * 1.6) * 0.035;
+    }
+    const cape = this.lobbyHero.getObjectByName('heroCape');
+    if (cape) {
+      cape.rotation.x = Math.sin(now * 1.2) * 0.035;
+      cape.position.z = -0.31 + Math.sin(now * 1.5) * 0.015;
+    }
+    const aura = this.lobbyHero.getObjectByName('heroAura') as THREE.Mesh | undefined;
+    if (aura) {
+      aura.rotation.z += delta * (shadowMode ? 1.6 : 0.72);
+      const material = aura.material as THREE.MeshBasicMaterial;
+      material.color.set(visual.accent);
+      material.opacity = shadowMode ? 0.78 : 0.56;
+    }
+    const halo = this.lobbyHero.getObjectByName('lobbyHeroHalo');
+    if (halo) {
+      halo.rotation.z += delta * (shadowMode ? -1.15 : -0.58);
+      const pulse = 1 + Math.sin(now * 2.2) * (shadowMode ? 0.08 : 0.04);
+      halo.scale.setScalar(pulse);
+    }
+  }
+
+  private updateLobbyCamera(delta: number, now: number): void {
+    const idleOrbit = this.profile.settings.reducedMotion ? 0 : Math.sin(now * 0.09) * 0.22 + Math.sin(now * 0.037) * 0.16;
+    const angle = idleOrbit;
+    const distance = 7.7 * this.lobbyZoom;
+    const height = 2.35 + Math.sin(now * 0.12) * 0.16;
+    const targetPosition = new THREE.Vector3(Math.sin(angle) * 2.4, height, distance + Math.cos(angle) * 0.45);
+    this.camera.position.lerp(targetPosition, 1 - Math.pow(0.004, delta));
+    this.camera.lookAt(new THREE.Vector3(0, 1.45, -0.15));
+  }
+
+  private isLobbyInteractive(): boolean {
+    return this.screen === 'menu' && this.lobbyRoot?.visible === true;
+  }
+
+  private beginLobbyPointer(event: PointerEvent): void {
+    this.lobbyPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    this.lobbyPointerMoved = false;
+    if (this.lobbyPointers.size === 1) {
+      this.lobbyPointerId = event.pointerId;
+      this.refs.sceneHost.setPointerCapture(event.pointerId);
+    }
+    if (this.lobbyPointers.size === 2) {
+      const points = [...this.lobbyPointers.values()];
+      this.lobbyPinchDistance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      this.lobbyPinchZoomStart = this.lobbyZoom;
+    }
+    void this.audio.resume().then(() => this.audio.startMusic(this.profile.activeCharacterId === 'shadow' ? 'shadow' : 'menu'));
+  }
+
+  private moveLobbyPointer(event: PointerEvent): void {
+    const previous = this.lobbyPointers.get(event.pointerId);
+    if (!previous) return;
+    const dx = event.clientX - previous.x;
+    const dy = event.clientY - previous.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) this.lobbyPointerMoved = true;
+    this.lobbyPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (this.lobbyPointers.size >= 2) {
+      const points = [...this.lobbyPointers.values()];
+      const distance = Math.max(24, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+      if (this.lobbyPinchDistance > 0) {
+        this.lobbyZoom = clamp(this.lobbyPinchZoomStart * (this.lobbyPinchDistance / distance), 0.72, 1.36);
+      }
+      return;
+    }
+
+    if (event.pointerId === this.lobbyPointerId) {
+      this.lobbyHeroYaw += dx * 0.009;
+    }
+  }
+
+  private endLobbyPointer(event: PointerEvent): void {
+    const wasSinglePointer = this.lobbyPointers.size === 1 && event.pointerId === this.lobbyPointerId;
+    this.lobbyPointers.delete(event.pointerId);
+    if (event.pointerId === this.lobbyPointerId) this.lobbyPointerId = null;
+    if (this.lobbyPointers.size < 2) this.lobbyPinchDistance = 0;
+    if (!wasSinglePointer || this.lobbyPointerMoved) return;
+    const now = performance.now();
+    if (now - this.lobbyLastTapAt < 320) {
+      this.lobbyHeroYaw = Math.PI;
+      this.lobbyZoom = 1;
+      this.toast('Lobby camera reset.');
+      this.lobbyLastTapAt = 0;
+      return;
+    }
+    this.lobbyLastTapAt = now;
+    this.triggerLobbyInteraction();
+  }
+
   private createArena(): void {
     const floorMaterial = new THREE.MeshStandardMaterial({ color: '#14142f', roughness: 0.8, metalness: 0.12 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(48, 48), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
-    this.scene.add(floor);
+    this.arenaRoot.add(floor);
 
     const grid = new THREE.GridHelper(48, 24, '#7c3aed', '#27273b');
     grid.position.y = 0.018;
-    this.scene.add(grid);
+    this.arenaRoot.add(grid);
 
     const gateMaterial = new THREE.MeshStandardMaterial({ color: '#2e1065', emissive: '#14002d', roughness: 0.56 });
     const wallMaterial = new THREE.MeshStandardMaterial({ color: '#0f172a', emissive: '#080812', roughness: 0.82 });
@@ -1333,7 +1834,7 @@ export class ShadowRequiemGame {
       obelisk.rotation.y = angle;
       obelisk.castShadow = true;
       obelisk.receiveShadow = true;
-      this.scene.add(obelisk);
+      this.arenaRoot.add(obelisk);
     }
 
     for (const z of [-18, 18]) {
@@ -1341,14 +1842,14 @@ export class ShadowRequiemGame {
       wall.position.set(0, 1.5, z);
       wall.receiveShadow = true;
       wall.castShadow = true;
-      this.scene.add(wall);
+      this.arenaRoot.add(wall);
     }
     for (const x of [-18, 18]) {
       const wall = new THREE.Mesh(new THREE.BoxGeometry(0.7, 3, 44), wallMaterial);
       wall.position.set(x, 1.5, 0);
       wall.receiveShadow = true;
       wall.castShadow = true;
-      this.scene.add(wall);
+      this.arenaRoot.add(wall);
     }
   }
 
@@ -1365,14 +1866,14 @@ export class ShadowRequiemGame {
     pillar.position.y = 1.9;
     group.add(pillar);
     group.visible = false;
-    this.scene.add(group);
+    this.arenaRoot.add(group);
     this.waypointMarker = group;
   }
 
   private createPlayer(): void {
     const object = this.makePlayerModel();
     object.position.set(0, 0, 6);
-    this.scene.add(object);
+    this.arenaRoot.add(object);
     const stats = this.getComputedStats();
     this.player = {
       object,
@@ -1400,27 +1901,55 @@ export class ShadowRequiemGame {
       new THREE.CylinderGeometry(0.45, 0.72, 1.95, 6),
       new THREE.MeshToonMaterial({ color: visual.primary })
     );
+    coat.name = 'heroCoat';
     coat.position.y = 1.05;
     coat.castShadow = true;
     group.add(coat);
 
     const chest = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.15, 0.5), new THREE.MeshToonMaterial({ color: visual.secondary }));
+    chest.name = 'heroChest';
     chest.position.set(0, 1.45, 0.05);
     chest.castShadow = true;
     group.add(chest);
 
+    const cape = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.28, 1.85),
+      new THREE.MeshToonMaterial({ color: visual.primary, side: THREE.DoubleSide })
+    );
+    cape.name = 'heroCape';
+    cape.position.set(0, 1.12, -0.31);
+    cape.castShadow = true;
+    group.add(cape);
+
+    const armMaterial = new THREE.MeshToonMaterial({ color: visual.primary });
+    const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1.1, 8), armMaterial);
+    leftArm.name = 'heroLeftArm';
+    leftArm.position.set(-0.63, 1.36, 0.03);
+    leftArm.rotation.z = 0.22;
+    leftArm.castShadow = true;
+    group.add(leftArm);
+    const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1.12, 8), armMaterial.clone());
+    rightArm.name = 'heroRightArm';
+    rightArm.position.set(0.64, 1.35, 0.02);
+    rightArm.rotation.z = -0.32;
+    rightArm.castShadow = true;
+    group.add(rightArm);
+
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 20, 16), new THREE.MeshToonMaterial({ color: '#e0c8b0' }));
+    head.name = 'heroHead';
     head.position.y = 2.23;
     head.castShadow = true;
     group.add(head);
 
     const hair = new THREE.Mesh(new THREE.ConeGeometry(0.43, 0.42, 7), new THREE.MeshToonMaterial({ color: '#050509' }));
+    hair.name = 'heroHair';
     hair.position.y = 2.52;
     hair.rotation.y = 0.4;
     hair.castShadow = true;
     group.add(hair);
 
     const sword = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.9, 0.12), new THREE.MeshStandardMaterial({ color: '#dbeafe', emissive: visual.accent, metalness: 0.52, roughness: 0.22 }));
+    sword.name = 'heroWeapon';
     sword.position.set(0.78, 1.22, 0.12);
     sword.rotation.z = -0.38;
     sword.castShadow = true;
@@ -1430,6 +1959,7 @@ export class ShadowRequiemGame {
       new THREE.TorusGeometry(0.92, 0.025, 8, 48),
       new THREE.MeshBasicMaterial({ color: visual.accent, transparent: true, opacity: 0.65 })
     );
+    aura.name = 'heroAura';
     aura.rotation.x = Math.PI / 2;
     aura.position.y = 0.08;
     group.add(aura);
@@ -1440,13 +1970,13 @@ export class ShadowRequiemGame {
     if (!this.player) return;
     const position = this.player.object.position.clone();
     const rotationY = this.player.object.rotation.y;
-    this.scene.remove(this.player.object);
+    this.player.object.parent?.remove(this.player.object);
     const nextModel = this.makePlayerModel();
     if (preserveTransform) {
       nextModel.position.copy(position);
       nextModel.rotation.y = rotationY;
     }
-    this.scene.add(nextModel);
+    this.arenaRoot.add(nextModel);
     this.player.object = nextModel;
   }
 
@@ -1510,6 +2040,8 @@ export class ShadowRequiemGame {
       this.updateProjectiles(delta, now);
       this.updateMission(now);
       this.updateCooldownButtons(now);
+    } else if (this.lobbyRoot?.visible) {
+      this.updateLobby(rawDelta, now);
     }
     this.updateEffects(rawDelta);
     this.updateDamageLabels(rawDelta);
@@ -2095,7 +2627,7 @@ export class ShadowRequiemGame {
     if (!data) throw new Error(`Unknown enemy: ${enemyId}`);
     const object = this.makeEnemyModel(data);
     object.position.set(x, 0, z);
-    this.scene.add(object);
+    this.arenaRoot.add(object);
     const levelScale = 1 + Math.max(0, this.profile.level - 1) * 0.08;
     const entity: EnemyEntity = {
       id: `${enemyId}-${this.enemySerial += 1}`,
@@ -2129,8 +2661,8 @@ export class ShadowRequiemGame {
   }
 
   private clearEnemiesAndProjectiles(): void {
-    for (const enemy of this.enemies) this.scene.remove(enemy.object);
-    for (const projectile of this.projectiles) this.scene.remove(projectile.object);
+    for (const enemy of this.enemies) enemy.object.parent?.remove(enemy.object);
+    for (const projectile of this.projectiles) projectile.object.parent?.remove(projectile.object);
     this.enemies = [];
     this.projectiles = [];
     this.activeBoss = null;
@@ -2241,7 +2773,7 @@ export class ShadowRequiemGame {
     }
 
     for (const effect of this.effects.filter((item) => item.life <= 0)) {
-      this.scene.remove(effect.object);
+      effect.object.parent?.remove(effect.object);
     }
     this.effects = this.effects.filter((item) => item.life > 0);
 
@@ -2271,6 +2803,10 @@ export class ShadowRequiemGame {
   }
 
   private updateCamera(delta: number, now: number): void {
+    if (this.screen !== 'playing') {
+      this.updateLobbyCamera(delta, now);
+      return;
+    }
     const playerPosition = this.player.object.position;
     const forward = new THREE.Vector3(Math.sin(this.cameraYaw), 0, Math.cos(this.cameraYaw));
     const right = new THREE.Vector3(Math.cos(this.cameraYaw), 0, -Math.sin(this.cameraYaw));
@@ -2339,7 +2875,18 @@ export class ShadowRequiemGame {
     if (this.waypointMarker?.visible) addDot('marker', this.waypointMarker.position.x, this.waypointMarker.position.z);
   }
 
+  private setSceneMode(mode: 'lobby' | 'arena'): void {
+    if (!this.lobbyRoot || !this.arenaRoot) return;
+    this.lobbyRoot.visible = mode === 'lobby';
+    this.arenaRoot.visible = mode === 'arena';
+    this.scene.background = new THREE.Color(mode === 'lobby' && this.profile.activeCharacterId === 'shadow' ? '#03030a' : '#070713');
+    this.scene.fog = new THREE.Fog(mode === 'lobby' && this.profile.activeCharacterId === 'shadow' ? '#020207' : '#070713', mode === 'lobby' ? 18 : 20, mode === 'lobby' ? 64 : 56);
+    if (mode === 'lobby') this.syncLobbyHero();
+  }
+
   private setCombatUI(visible: boolean): void {
+    this.refs.overlay.classList.remove('lobby-overlay');
+    this.setSceneMode(visible ? 'arena' : 'lobby');
     this.refs.hud.classList.toggle('hidden', !visible);
     this.refs.touchControls.classList.toggle('hidden', !visible);
     this.refs.partyBar.classList.toggle('hidden', !visible);
@@ -2363,7 +2910,7 @@ export class ShadowRequiemGame {
     const material = new THREE.MeshBasicMaterial({ color });
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), material);
     mesh.position.copy(origin);
-    this.scene.add(mesh);
+    this.arenaRoot.add(mesh);
     this.projectiles.push({ object: mesh, velocity: direction.normalize().multiplyScalar(speed), damage, radius, life: 4.2, from, color });
   }
 
@@ -2372,7 +2919,7 @@ export class ShadowRequiemGame {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.02, 64), material);
     ring.position.copy(position).setY(0.07);
     ring.rotation.x = -Math.PI / 2;
-    this.scene.add(ring);
+    this.arenaRoot.add(ring);
     this.effects.push({ object: ring, life: duration, maxLife: duration, expand: finalScale, fade: true });
   }
 
@@ -2381,7 +2928,7 @@ export class ShadowRequiemGame {
     const ring = new THREE.Mesh(new THREE.RingGeometry(radius * 0.86, radius, 64), material);
     ring.position.copy(position).setY(0.055);
     ring.rotation.x = -Math.PI / 2;
-    this.scene.add(ring);
+    this.arenaRoot.add(ring);
     this.effects.push({ object: ring, life: duration, maxLife: duration, fade: true });
   }
 
@@ -2391,7 +2938,7 @@ export class ShadowRequiemGame {
       const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
       mesh.position.copy(position).add(new THREE.Vector3(0, 0.8 + Math.random() * 0.8, 0));
       const velocity = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(3 + Math.random() * 5);
-      this.scene.add(mesh);
+      this.arenaRoot.add(mesh);
       this.effects.push({ object: mesh, life: duration, maxLife: duration, velocity, fade: true });
     }
   }
@@ -2402,7 +2949,7 @@ export class ShadowRequiemGame {
     arc.position.copy(this.player.object.position).add(new THREE.Vector3(0, 0.7, 0)).addScaledVector(this.getPlayerForward(), 1.1);
     arc.rotation.x = Math.PI / 2;
     arc.rotation.z = -this.player.facing;
-    this.scene.add(arc);
+    this.arenaRoot.add(arc);
     this.effects.push({ object: arc, life: 0.18, maxLife: 0.18, expand: 0.35, fade: true });
   }
 
@@ -2415,7 +2962,7 @@ export class ShadowRequiemGame {
       if (!mesh.material) return;
       mesh.material = new THREE.MeshBasicMaterial({ color: '#a78bfa', transparent: true, opacity: 0.26 });
     });
-    this.scene.add(ghost);
+    this.arenaRoot.add(ghost);
     this.effects.push({ object: ghost, life: 0.32, maxLife: 0.32, fade: true });
   }
 

@@ -5,6 +5,7 @@ export type InventoryTab = 'WEAPONS' | 'ARTIFACTS' | 'MATERIALS' | 'CONSUMABLES'
 export type MissionTab = 'STORY' | 'DAILY' | 'WEEKLY' | 'BOSS' | 'DUNGEON' | 'EVENT';
 export type SettingsTab = 'GENERAL' | 'GRAPHICS' | 'AUDIO' | 'CONTROLS' | 'CAMERA' | 'ACCESSIBILITY' | 'ACCOUNT';
 export type BottomNavId = 'home' | 'characters' | 'inventory' | 'missions' | 'more';
+export type GeneratedModeId = 'dungeon' | 'arena' | 'training' | 'boss';
 
 type MaterialBag = Record<string, number>;
 
@@ -16,6 +17,7 @@ interface BaseScreenProps {
 export interface LobbyProps extends BaseScreenProps {
   activeCharacter: CharacterData;
   activeWeapon: WeaponData;
+  roster?: CharacterData[];
   message?: string;
   hasSave: boolean;
 }
@@ -65,47 +67,130 @@ export interface VictoryScreenProps {
 
 export function renderMainLobby(props: LobbyProps): string {
   const { profile, activeCharacter, activeWeapon, message, hasSave } = props;
+  const roster = props.roster?.length ? props.roster : [activeCharacter];
+  const nextMission = profile.lastMissionId || 'awakening';
   return mobileFrame(
     'home',
     `
-      <header class="mobile-topbar">
-        ${profileBlock(profile, activeCharacter)}
-        <div class="top-currency-row">
-          ${currencyPill('Gold', profile.gold)}
-          ${currencyPill('Gems', profile.inventory.nullFragment ?? 0)}
-          <button class="icon-chip" type="button" data-ui-action="archive" aria-label="Notifications">N</button>
-          <button class="icon-chip" type="button" data-ui-action="settings" aria-label="Settings">S</button>
-        </div>
-      </header>
+      <section class="lobby-layout" aria-label="Nocturne Garden 3D lobby">
+        <header class="lobby-topbar">
+          ${profileBlock(profile, activeCharacter)}
+          <div class="top-currency-row lobby-currencies">
+            ${currencyPill('G', profile.gold, 'Gold')}
+            ${currencyPill('N', profile.inventory.nullFragment ?? 0, 'Premium currency')}
+            <button class="icon-chip has-badge" type="button" data-ui-action="mail" aria-label="Open mail"><span>MAIL</span><i>3</i></button>
+            <button class="icon-chip" type="button" data-ui-action="settings" aria-label="Open settings"><span>SET</span></button>
+          </div>
+        </header>
 
-      <section class="lobby-stage" aria-label="Selected character lobby">
-        <div class="event-ticket">
-          <span>Current Event</span>
-          <strong>Memory War Prelude</strong>
-        </div>
-        <div class="character-standee" style="--hero-a:${activeCharacter.visuals?.secondary ?? '#7c3aed'};--hero-b:${activeCharacter.visuals?.accent ?? '#f43f5e'}">
-          <div class="standee-aura"></div>
-          <div class="standee-body"><span>${activeCharacter.codename}</span></div>
-        </div>
-        <div class="lobby-character-card glass-panel">
+        <aside class="lobby-event-banner glass-panel" aria-label="Featured event">
+          <span>NEW EVENT</span>
+          <strong>THE ECLIPSE AWAKENS</strong>
+          <small>Boss anomaly detected</small>
+        </aside>
+
+        <nav class="lobby-hero-rail" aria-label="Quick hero select">
+          ${roster.map((character) => portraitButton(character, character.id === activeCharacter.id, `data-character-id="${character.id}"`)).join('')}
+        </nav>
+
+        <div class="lobby-nameplate glass-panel" aria-live="polite">
           <span class="screen-kicker">${activeCharacter.rarity} · ${activeCharacter.role}</span>
           <h1>${activeCharacter.codename}</h1>
           <p>${activeCharacter.displayName} · ${activeWeapon.name}</p>
         </div>
+
+        <div class="lobby-utility-stack" aria-label="Lobby utilities">
+          <button class="lobby-utility" type="button" data-ui-action="daily-reward"><strong>DAILY</strong><span class="notify-dot">1</span></button>
+          <button class="lobby-utility" type="button" data-ui-action="mail"><strong>MAIL</strong><span class="notify-dot">3</span></button>
+        </div>
+
         ${message ? `<div class="lobby-message glass-panel">${message}</div>` : ''}
+        <div class="lobby-touch-hint">Drag hero to rotate · Pinch zoom · Double tap reset</div>
+        <button class="play-button lobby-play" type="button" data-ui-action="play-modes">PLAY</button>
+        <button class="quick-start-button" type="button" data-prepare-mission-id="${nextMission}">${hasSave ? 'QUICK START' : 'TUTORIAL'}</button>
       </section>
+    `,
+    'lobby-home-screen'
+  );
+}
 
-      <section class="quick-strip" aria-label="Quick actions">
-        <button class="quick-card" type="button" data-ui-action="missions"><span>Daily</span><strong>Training</strong></button>
-        <button class="quick-card" type="button" data-ui-action="inventory"><span>Reward</span><strong>Forge Ready</strong></button>
-        <button class="quick-card" type="button" data-ui-action="garden"><span>HQ</span><strong>Nocturne</strong></button>
+export function renderLobbyModeOverlay(props: LobbyProps): string {
+  const { profile, activeCharacter, activeWeapon } = props;
+  return mobileFrame(
+    'home',
+    `
+      <section class="lobby-layout lobby-mode-open" aria-label="Select game mode">
+        <header class="lobby-topbar">
+          ${profileBlock(profile, activeCharacter)}
+          <div class="top-currency-row lobby-currencies">
+            ${currencyPill('G', profile.gold, 'Gold')}
+            ${currencyPill('N', profile.inventory.nullFragment ?? 0, 'Premium currency')}
+            <button class="icon-chip" type="button" data-ui-action="menu" aria-label="Close mode selection"><span>BACK</span></button>
+          </div>
+        </header>
+        <div class="lobby-nameplate compact glass-panel">
+          <span class="screen-kicker">Deploying</span>
+          <h1>${activeCharacter.codename}</h1>
+          <p>${activeWeapon.name}</p>
+        </div>
+        <section class="mode-select-overlay glass-panel" aria-label="Game modes">
+          <div class="mode-select-head">
+            <span class="screen-kicker">PLAY</span>
+            <h2>Select Mode</h2>
+            <button class="back-chip" type="button" data-ui-action="menu">Close</button>
+          </div>
+          <div class="mode-tile-grid">
+            ${modeTile('STORY', 'Continue the main anime campaign', 'Start', `data-prepare-mission-id="${profile.lastMissionId || 'awakening'}"`)}
+            ${modeTile('DUNGEON', 'Three-room abyss run', 'Enter', 'data-prepare-mode="dungeon"')}
+            ${modeTile('BOSS', 'Eclipse Warden showdown', 'Fight', 'data-prepare-mode="boss"')}
+            ${modeTile('ARENA', 'Fast combat skirmish', 'Battle', 'data-prepare-mode="arena"')}
+            ${modeTile('EVENT', 'The Eclipse Awakens', 'TODO', '', true)}
+          </div>
+        </section>
       </section>
+    `,
+    'lobby-home-screen'
+  );
+}
 
-      <button class="play-button" type="button" data-prepare-mission-id="${profile.lastMissionId || 'awakening'}">PLAY</button>
-      ${!hasSave ? '<button class="ghost-start" type="button" data-ui-action="new-game">New Game Intro</button>' : '<button class="ghost-start" type="button" data-ui-action="continue">Continue Story</button>'}
+export function renderDailyRewardScreen(profile: PlayerProfile): string {
+  return mobileFrame(
+    'home',
+    `
+      <header class="mobile-topbar compact-topbar">
+        <button class="back-chip" type="button" data-ui-action="menu">Back</button>
+        <h1>Daily</h1>
+        ${currencyPill('G', profile.gold, 'Gold')}
+      </header>
+      <section class="daily-reward-panel glass-panel">
+        <span class="screen-kicker">Daily Reward</span>
+        <h2>Log-in supply cache</h2>
+        <p>Prototype reward screen. Claim logic is TODO, so rewards are shown as preview only.</p>
+        <div class="daily-grid">
+          ${['Gold', 'Shard', 'Sigil', 'Core', 'Gold', 'Null', 'Hero'].map((item, index) => `<article class="daily-cell ${index === 0 ? 'ready' : ''}"><strong>Day ${index + 1}</strong><span>${item}</span></article>`).join('')}
+        </div>
+        <button class="menu-button" type="button" disabled>CLAIM TODO</button>
+      </section>
     `
   );
 }
+
+export function renderMailScreen(): string {
+  return mobileFrame(
+    'home',
+    `
+      <header class="mobile-topbar compact-topbar">
+        <button class="back-chip" type="button" data-ui-action="menu">Back</button>
+        <h1>Mail</h1>
+        <span class="mini-rank">3 unread</span>
+      </header>
+      <section class="mail-panel">
+        ${['Launch supply delivered', 'Nocturne Garden status', 'The Eclipse Awakens'].map((title, index) => `<article class="mail-card glass-panel"><span>MAIL 0${index + 1}</span><strong>${title}</strong><small>${index === 0 ? 'Contains prototype announcement only.' : 'Story/news placeholder. Rewards are TODO.'}</small></article>`).join('')}
+      </section>
+    `
+  );
+}
+
 
 export function renderCharacterScreen(props: CharacterScreenProps): string {
   const { characters, activeCharacter, activeStats, activeWeapon, tab, profile, attackCost, vitalityCost, shadowCost } = props;
@@ -308,7 +393,7 @@ export function renderGardenScreen(): string {
 export function renderModeScreen(kind: 'dungeon' | 'arena' | 'training'): string {
   const config = {
     dungeon: ['Abyss Dungeon', 'Three compact randomized combat rooms with scaling rewards.', 'Enter Abyss', 'start-dungeon'],
-    arena: ['Capital Arena', 'Boss Rush challenge with elite enemies and a main boss.', 'Start Rush', 'start-arena'],
+    arena: ['Capital Arena', 'Fast skirmish waves for mobile combat practice.', 'Start Match', 'start-arena'],
     training: ['Training Room', 'Practice movement, cooldowns, switching, and ultimates.', 'Train', 'start-training']
   }[kind];
   return mobileFrame(
@@ -449,32 +534,39 @@ export function renderDefeatScreen(): string {
   `;
 }
 
-function mobileFrame(activeNav: BottomNavId, content: string): string {
-  return `<div class="mobile-screen">${content}${bottomNav(activeNav)}</div>`;
+function mobileFrame(activeNav: BottomNavId, content: string, extraClass = ''): string {
+  return `<div class="mobile-screen ${extraClass}">${content}${bottomNav(activeNav)}</div>`;
 }
 
 function bottomNav(active: BottomNavId): string {
   const items: [BottomNavId, string, string][] = [
     ['home', 'HOME', 'menu'],
-    ['characters', 'HERO', 'characters'],
-    ['inventory', 'BAG', 'inventory'],
-    ['missions', 'QUEST', 'missions'],
+    ['characters', 'HEROES', 'characters'],
+    ['inventory', 'INVENTORY', 'inventory'],
+    ['missions', 'MISSIONS', 'missions'],
     ['more', 'MORE', 'more']
   ];
   return `<nav class="bottom-nav" aria-label="Primary game navigation">${items.map(([id, label, action]) => `<button class="bottom-nav-item ${id === active ? 'active' : ''}" type="button" data-ui-action="${action}"><span>${label[0]}</span><strong>${label}</strong></button>`).join('')}</nav>`;
 }
 
 function profileBlock(profile: PlayerProfile, character: CharacterData): string {
+  const xpRequirement = Math.max(1, profile.level * 144);
+  const xpRatio = Math.max(0, Math.min(100, Math.round((profile.xp / xpRequirement) * 100)));
+  const rank = profile.completedMissions.length >= 2 ? 'Shadow Commander' : profile.completedMissions.length === 1 ? 'Awakened' : 'Rookie';
   return `
-    <button class="profile-chip" type="button" data-ui-action="characters" aria-label="Open player profile">
+    <button class="profile-chip lobby-profile-chip" type="button" data-ui-action="characters" aria-label="Open player profile">
       ${portraitMarkup(character)}
-      <span><strong>Shadow Lord</strong><small>LV ${profile.level}</small></span>
+      <span class="profile-copy"><strong>Shadow Lord</strong><small>LV ${profile.level} · ${rank}</small><i><b style="width:${xpRatio}%"></b></i></span>
     </button>
   `;
 }
 
-function currencyPill(label: string, value: number): string {
-  return `<span class="currency-pill"><small>${label}</small><strong>${value}</strong></span>`;
+function currencyPill(label: string, value: number, ariaLabel = label): string {
+  return `<span class="currency-pill" aria-label="${ariaLabel}: ${value}"><small>${label}</small><strong>${value}</strong></span>`;
+}
+
+function modeTile(title: string, copy: string, actionLabel: string, dataAttrs: string, disabled = false): string {
+  return `<button class="mode-tile ${disabled ? 'locked' : ''}" type="button" ${dataAttrs} ${disabled ? 'disabled' : ''}><span>${title}</span><strong>${actionLabel}</strong><small>${copy}</small></button>`;
 }
 
 function portraitMarkup(character: CharacterData): string {
@@ -548,7 +640,7 @@ function renderMissionTab(props: MissionScreenProps): string {
     return `${quickMissionCard('Daily Training', 'Practice one combat room.', 'Training Sigils', 'training')}${quickMissionCard('Daily Abyss', 'Clear randomized rooms.', 'Shadow Shards', 'dungeon')}`;
   }
   if (props.selectedTab === 'BOSS') {
-    return `${quickMissionCard('Eclipse Boss Rush', 'Elite guard, mini-boss, Warden.', 'Null Fragment', 'arena')}`;
+    return `${quickMissionCard('Eclipse Boss Rush', 'Elite guard, mini-boss, Warden.', 'Null Fragment', 'boss')}`;
   }
   if (props.selectedTab === 'DUNGEON') {
     return `${quickMissionCard('Abyss Dungeon', 'Three procedural rooms.', 'Forge materials', 'dungeon')}`;

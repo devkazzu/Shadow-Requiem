@@ -53,9 +53,15 @@ The current implementation is **v0.1.0 — playable prototype / vertical slice**
 
 The UI has been rebuilt around **one screen = one purpose** instead of one large scrolling dashboard. The current shell now follows mobile action game usability principles:
 
-- Cinematic lobby as the first screen after load
-- Fixed 5-item bottom navigation: HOME / HERO / BAG / QUEST / MORE
-- Compact character screen with carousel portraits and tabs: Overview, Skills, Equipment, Talents, Stats
+- Full-screen 3D Nocturne Garden HQ lobby after the short logo/loading transition
+- Procedural animated HQ scene with moonlit windows, columns, weapon displays, floating crystals, moving NPC silhouettes, particles, fog, and lighting
+- Large selected 3D hero in the center with idle breathing, aura/weapon animation, tap reaction, drag rotation, pinch zoom, and double-tap camera reset
+- Shadow-specific lobby treatment with darker lighting/music layer and heavier aura
+- Compact top-left profile with avatar, level, rank, and EXP bar
+- Compact top-right currency, mail badge, and settings controls
+- Huge PLAY button that opens a compact STORY / DUNGEON / BOSS / ARENA / EVENT mode overlay
+- Fixed 5-item bottom navigation: HOME / HEROES / INVENTORY / MISSIONS / MORE
+- Separate character screen with carousel portraits and tabs: Overview, Skills, Equipment, Talents, Stats
 - Separate inventory screen with category tabs and grid items
 - Separate mission screen with Story/Daily/Weekly/Boss/Dungeon/Event tabs
 - Compact battle preparation screen with selected team, enemy type, rewards, and START button

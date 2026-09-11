@@ -68,4 +68,4 @@ The MVP intentionally avoids protected anime/game assets. All current models are
 
 ## Mobile-first UX status
 
-The previous large overlay/dashboard approach has been replaced with dedicated mobile screens. Important features are no longer hidden in a giant scroll page. Main navigation is fixed at the bottom where appropriate, mission start goes through a compact preparation screen, and combat keeps the joystick/actions/portraits visible without opening menus.
+The previous large overlay/dashboard approach has been replaced with dedicated mobile screens. Important features are no longer hidden in a giant scroll page. Main navigation is fixed at the bottom where appropriate, mission start goes through a compact preparation screen, and combat keeps the joystick/actions/portraits visible without opening menus. The HOME screen now renders over a full-screen animated 3D Nocturne Garden HQ scene instead of a flat/website dashboard: selected hero in the center, compact top chrome, small event/daily/mail affordances, huge PLAY button, and a compact mode-selection overlay.

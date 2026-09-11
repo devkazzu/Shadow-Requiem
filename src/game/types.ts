@@ -11,6 +11,8 @@ export type GameScreen =
   | 'inventory'
   | 'shop'
   | 'more'
+  | 'daily'
+  | 'mail'
   | 'archive'
   | 'defeat'
   | 'settings';

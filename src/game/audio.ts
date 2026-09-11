@@ -22,9 +22,15 @@ export class AudioEngine {
     }
   }
 
-  startMusic(intensity: 'menu' | 'battle' | 'boss' = 'menu'): void {
+  startMusic(intensity: 'menu' | 'battle' | 'boss' | 'shadow' = 'menu'): void {
     if (!this.context || !this.musicGain || this.musicOscillators.length > 0) return;
-    const notes = intensity === 'boss' ? [55, 82.41, 110] : intensity === 'battle' ? [65.41, 98, 130.81] : [49, 73.42, 98];
+    const notes = intensity === 'shadow'
+      ? [41.2, 55, 82.41, 110]
+      : intensity === 'boss'
+        ? [55, 82.41, 110]
+        : intensity === 'battle'
+          ? [65.41, 98, 130.81]
+          : [49, 73.42, 98];
     for (const [index, frequency] of notes.entries()) {
       const osc = this.context.createOscillator();
       const gain = this.context.createGain();

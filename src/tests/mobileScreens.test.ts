@@ -2,21 +2,52 @@ import { describe, expect, it } from 'vitest';
 import { characters, missions, weapons } from '../game/content';
 import { deriveStats } from '../game/systems/combat';
 import { createDefaultProfile } from '../game/systems/save';
-import { renderBattlePrepScreen, renderCharacterScreen, renderInventoryScreen, renderMainLobby, renderMapScreen, renderMissionScreen } from '../game/ui/mobileScreens';
+import {
+  renderBattlePrepScreen,
+  renderCharacterScreen,
+  renderInventoryScreen,
+  renderLobbyModeOverlay,
+  renderMainLobby,
+  renderMapScreen,
+  renderMissionScreen
+} from '../game/ui/mobileScreens';
 
 describe('mobile-first screen renderers', () => {
-  it('renders a lobby with fixed bottom navigation and a direct play action', () => {
+  it('renders a full-screen 3D lobby chrome with fixed nav, hero rail, and mode PLAY', () => {
     const profile = createDefaultProfile();
     const html = renderMainLobby({
       profile,
       activeCharacter: characters.shadow,
       activeWeapon: weapons['nocturne-katana'],
+      roster: Object.values(characters),
       hasSave: false
     });
 
+    expect(html).toContain('lobby-home-screen');
+    expect(html).toContain('lobby-hero-rail');
+    expect(html).toContain('data-ui-action="play-modes"');
+    expect(html).toContain('data-ui-action="daily-reward"');
     expect(html).toContain('bottom-nav');
-    expect(html).toContain('data-prepare-mission-id');
-    expect(html).toContain('PLAY');
+    expect(html).not.toContain('quick-strip');
+    expect(html).not.toContain('character-standee');
+  });
+
+  it('renders compact mode selection overlay instead of a scrolling mission dashboard', () => {
+    const profile = createDefaultProfile();
+    const html = renderLobbyModeOverlay({
+      profile,
+      activeCharacter: characters.shadow,
+      activeWeapon: weapons['nocturne-katana'],
+      roster: Object.values(characters),
+      hasSave: true
+    });
+
+    expect(html).toContain('mode-select-overlay');
+    expect(html).toContain('STORY');
+    expect(html).toContain('data-prepare-mode="dungeon"');
+    expect(html).toContain('data-prepare-mode="boss"');
+    expect(html).toContain('data-prepare-mode="arena"');
+    expect(html).not.toContain('mission-board-screen');
   });
 
   it('renders character details with tabs and a horizontal portrait rail', () => {
