@@ -67,59 +67,56 @@ export interface VictoryScreenProps {
 
 export function renderMainLobby(props: LobbyProps): string {
   const { profile, activeCharacter, activeWeapon, message, hasSave } = props;
-  const roster = props.roster?.length ? props.roster : [activeCharacter];
   return mobileFrame(
     'home',
     `
-      <section class="lobby-layout lobby-v2" aria-label="Nocturne Garden 3D lobby">
-        <header class="lobby-v2-top-hud" aria-label="Player and game status">
+      <section class="lobby-layout lobby-v3" aria-label="Nocturne Garden castle lobby">
+        <header class="lobby-v3-top-hud" aria-label="Player and game status">
           ${profileBlock(profile, activeCharacter)}
-          <div class="lobby-v2-resource-row" aria-label="Currencies">
+          <div class="lobby-v3-resource-row" aria-label="Currencies">
             ${resourceHudPill('gold', profile.gold, 'Gold')}
             ${resourceHudPill('gem', profile.inventory.nullFragment ?? 0, 'Premium currency')}
             ${resourceHudPill('energy', 120, 'Energy')}
           </div>
-          <div class="lobby-v2-brand" aria-label="Shadow Requiem"><strong>SHADOW REQUIEM</strong><span>Nocturne Garden HQ</span></div>
-          <div class="lobby-v2-system-row" aria-label="Social and settings">
-            ${systemButton('Squad', 'more', undefined, 'squad')}
+          <div class="lobby-v3-system-row" aria-label="Friends, mail and settings">
+            ${systemButton('Friends', 'more', undefined, 'squad')}
             ${systemButton('Mail', 'mail', 3, 'mail')}
             ${systemButton('Settings', 'settings', undefined, 'settings')}
           </div>
         </header>
 
-        <aside class="lobby-v2-left-menu" aria-label="Lobby menu">
-          ${sideMenuButton('STORE', 'Prototype shop', 'data-ui-action="shop"')}
-          ${sideMenuButton('GARDEN', 'Nocturne HQ', 'data-ui-action="garden"')}
-          ${sideMenuButton('TRAINING', 'Practice room', 'data-prepare-mode="training"')}
-          ${sideMenuButton('ARENA', 'Rank trial', 'data-prepare-mode="arena"')}
-          ${sideMenuButton('MISSIONS', 'Story board', 'data-ui-action="missions"')}
+        <aside class="lobby-v3-left-rail" aria-label="Lobby shortcuts">
+          ${sideShortcut('SHOP', 'shop', 'shop')}
+          ${sideShortcut('EVENTS', 'play-modes', 'event', 1)}
+          ${sideShortcut('MISSIONS', 'missions', 'missions')}
+          ${sideShortcut('GUILD', 'more', 'guild', 1)}
         </aside>
 
-        <nav class="lobby-v2-hero-select" aria-label="Lobby hero selector">
-          ${roster.map((character) => portraitButton(character, character.id === activeCharacter.id, `data-character-id="${character.id}"`)).join('')}
-        </nav>
+        <button class="lobby-v3-promo glass-panel" type="button" data-ui-action="play-modes" aria-label="Open featured event">
+          <span>NEW EVENT</span>
+          <strong>THE ECLIPSE AWAKENS</strong>
+          <small>Limited-time castle rift</small>
+        </button>
 
-        <aside class="lobby-v2-event-panel" aria-label="Events and notifications">
-          ${eventPanelButton('EVENT', 'The Eclipse Awakens', 'data-ui-action="play-modes"', 1)}
-          ${eventPanelButton('DAILY', 'Daily Login', 'data-ui-action="daily-reward"', 1)}
-          ${eventPanelButton('BOSS', 'Eclipse Warden', 'data-prepare-mode="boss"')}
-          ${eventPanelButton('FEST', 'Shadow Fest', 'data-ui-action="play-modes"')}
-          ${eventPanelButton('MORE', 'More Systems', 'data-ui-action="more"')}
+        <aside class="lobby-v3-friends-panel glass-panel" aria-label="Friends panel">
+          <button class="friends-panel-header" type="button" data-ui-action="more"><strong>Friends</strong><span>Online 3/12</span><b aria-hidden="true">⌄</b></button>
+          ${friendRow('Aurelia', 'Mythic', 'Online', 'alpha')}
+          ${friendRow('Bellatrix', 'Legend', 'In Lobby', 'beta')}
+          ${friendRow('Delyra', 'Epic', 'In Game', 'delta')}
+          ${friendRow('Zerith', 'Grandmaster', 'Offline', 'zeta', true)}
         </aside>
 
-        <div class="lobby-v2-nameplate glass-panel" aria-live="polite">
-          <span class="screen-kicker">${activeCharacter.rarity} · ${activeCharacter.role}</span>
-          <h1>${activeCharacter.codename}</h1>
-          <p>${activeCharacter.displayName} · ${activeWeapon.name}</p>
-        </div>
+        <button class="lobby-v3-mode-card glass-panel" type="button" data-ui-action="play-modes" aria-label="Open game mode selector">
+          <span class="mode-emblem" aria-hidden="true"></span>
+          <span><strong>CLASSIC</strong><small>${hasSave ? 'Story / Dungeon / Boss' : 'Tutorial available'}</small></span>
+          <b aria-hidden="true">›</b>
+        </button>
 
-        <div class="lobby-v2-chat glass-panel" aria-label="World chat preview"><strong>[World]</strong><span>Team invite available</span></div>
         ${message ? `<div class="lobby-message glass-panel">${message}</div>` : ''}
-        <div class="lobby-touch-hint">Drag character to rotate · Pinch zoom · Double tap reset</div>
-        <button class="lobby-v2-start" type="button" data-ui-action="play-modes" aria-label="Start battle mode selection"><span>START</span><small>${hasSave ? 'Mode Select' : 'Tutorial Ready'}</small></button>
+        <button class="lobby-v3-start" type="button" data-ui-action="play-modes" aria-label="Start battle mode selection"><span>START</span><small>${activeCharacter.codename} · ${activeWeapon.name}</small></button>
       </section>
     `,
-    'lobby-home-screen lobby-v2-screen'
+    'lobby-home-screen lobby-v3-screen'
   );
 }
 
@@ -128,24 +125,23 @@ export function renderLobbyModeOverlay(props: LobbyProps): string {
   return mobileFrame(
     'home',
     `
-      <section class="lobby-layout lobby-v2 lobby-mode-open" aria-label="Select game mode">
-        <header class="lobby-v2-top-hud" aria-label="Player and game status">
+      <section class="lobby-layout lobby-v3 lobby-mode-open" aria-label="Select game mode">
+        <header class="lobby-v3-top-hud" aria-label="Player and game status">
           ${profileBlock(profile, activeCharacter)}
-          <div class="lobby-v2-resource-row" aria-label="Currencies">
+          <div class="lobby-v3-resource-row" aria-label="Currencies">
             ${resourceHudPill('gold', profile.gold, 'Gold')}
             ${resourceHudPill('gem', profile.inventory.nullFragment ?? 0, 'Premium currency')}
             ${resourceHudPill('energy', 120, 'Energy')}
           </div>
-          <div class="lobby-v2-brand" aria-label="Shadow Requiem"><strong>SHADOW REQUIEM</strong><span>${activeWeapon.name}</span></div>
-          <div class="lobby-v2-system-row" aria-label="Close mode selection">
+          <div class="lobby-v3-system-row" aria-label="Close mode selection">
             ${systemButton('Back', 'menu', undefined, 'back')}
           </div>
         </header>
 
-        <section class="mode-select-overlay lobby-v2-mode-panel glass-panel" aria-label="Game modes">
+        <section class="mode-select-overlay lobby-v3-mode-overlay glass-panel" aria-label="Game modes">
           <div class="mode-select-head">
-            <span class="screen-kicker">START</span>
-            <h2>Select Battle Mode</h2>
+            <span class="screen-kicker">BATTLE MODE</span>
+            <h2>Select Deployment</h2>
             <button class="back-chip" type="button" data-ui-action="menu">Close</button>
           </div>
           <div class="mode-tile-grid">
@@ -158,7 +154,7 @@ export function renderLobbyModeOverlay(props: LobbyProps): string {
         </section>
       </section>
     `,
-    'lobby-home-screen lobby-v2-screen'
+    'lobby-home-screen lobby-v3-screen'
   );
 }
 
@@ -549,13 +545,13 @@ function mobileFrame(activeNav: BottomNavId, content: string, extraClass = ''): 
 
 function bottomNav(active: BottomNavId): string {
   const items: [BottomNavId, string, string, string][] = [
-    ['home', 'HOME', 'menu', 'home'],
-    ['characters', 'HEROES', 'characters', 'heroes'],
-    ['inventory', 'INVENTORY', 'inventory', 'inventory'],
-    ['missions', 'MISSIONS', 'missions', 'missions'],
-    ['more', 'MORE', 'more', 'more']
+    ['home', 'VAULT', 'inventory', 'vault'],
+    ['characters', 'WEAPON', 'weapons', 'weapon'],
+    ['inventory', 'PRESET', 'characters', 'preset'],
+    ['missions', 'COLLECTION', 'archive', 'collection'],
+    ['more', 'LAB', 'garden', 'lab']
   ];
-  return `<nav class="bottom-nav" aria-label="Primary game navigation">${items.map(([id, label, action, icon]) => `<button class="bottom-nav-item ${id === active ? 'active' : ''}" type="button" data-ui-action="${action}"><span class="nav-glyph nav-glyph-${icon}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</nav>`;
+  return `<nav class="bottom-nav" aria-label="Primary game navigation">${items.map(([id, label, action, icon]) => `<button class="bottom-nav-item ${id === active && active !== 'home' ? 'active' : ''}" type="button" data-ui-action="${action}"><span class="nav-glyph nav-glyph-${icon}" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</nav>`;
 }
 
 function profileBlock(profile: PlayerProfile, character: CharacterData): string {
@@ -592,6 +588,14 @@ function sideMenuButton(label: string, copy: string, dataAttrs: string): string 
 
 function eventPanelButton(label: string, copy: string, dataAttrs: string, badge?: number): string {
   return `<button class="lobby-v2-event-button" type="button" ${dataAttrs}><span class="event-glyph" aria-hidden="true"></span><strong>${label}</strong><small>${copy}</small>${badge ? `<i>${badge}</i>` : ''}<b aria-hidden="true">›</b></button>`;
+}
+
+function sideShortcut(label: string, action: string, glyph: string, badge?: number): string {
+  return `<button class="lobby-v3-side-shortcut" type="button" data-ui-action="${action}" aria-label="${label}"><span class="side-glyph side-glyph-${glyph}" aria-hidden="true"></span><strong>${label}</strong>${badge ? `<i>${badge}</i>` : ''}</button>`;
+}
+
+function friendRow(name: string, rank: string, status: string, characterId: string, muted = false): string {
+  return `<button class="friend-row ${muted ? 'muted' : ''}" type="button" data-ui-action="more" aria-label="Open ${name} friend actions"><span class="friend-avatar" aria-hidden="true">${name.slice(0, 2).toUpperCase()}</span><span><strong>${name}</strong><small>${rank} · ${status}</small></span><b data-team-pick="${characterId}" aria-hidden="true">+</b></button>`;
 }
 
 function portraitMarkup(character: CharacterData): string {

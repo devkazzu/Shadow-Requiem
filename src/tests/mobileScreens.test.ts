@@ -24,14 +24,20 @@ describe('mobile-first screen renderers', () => {
     });
 
     expect(html).toContain('lobby-home-screen');
-    expect(html).toContain('lobby-v2-left-menu');
-    expect(html).toContain('lobby-v2-event-panel');
-    expect(html).toContain('lobby-v2-hero-select');
-    expect(html).toContain('lobby-v2-start');
+    expect(html).toContain('lobby-v3-left-rail');
+    expect(html).toContain('lobby-v3-friends-panel');
+    expect(html).toContain('lobby-v3-mode-card');
+    expect(html).toContain('lobby-v3-start');
     expect(html).toContain('data-ui-action="play-modes"');
-    expect(html).toContain('data-ui-action="daily-reward"');
+    expect(html).toContain('data-ui-action="mail"');
+    expect(html).toContain('Online 3/12');
     expect(html).toContain('bottom-nav');
     expect(html).toContain('nav-glyph');
+    expect(html).toContain('VAULT');
+    expect(html).toContain('WEAPON');
+    expect(html).toContain('PRESET');
+    expect(html).toContain('COLLECTION');
+    expect(html).toContain('LAB');
     expect(html).not.toContain('<span>H</span>');
     expect(html).not.toContain('quick-strip');
     expect(html).not.toContain('character-standee');

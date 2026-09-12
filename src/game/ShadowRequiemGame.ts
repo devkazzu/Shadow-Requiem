@@ -680,6 +680,9 @@ export class ShadowRequiemGame {
         this.showCharacterScreen();
         break;
       case 'weapons':
+        this.inventoryTab = 'WEAPONS';
+        this.showInventoryScreen();
+        break;
       case 'inventory':
         this.showInventoryScreen();
         break;
