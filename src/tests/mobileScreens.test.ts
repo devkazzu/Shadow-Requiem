@@ -29,7 +29,7 @@ describe('mobile-first screen renderers', () => {
     expect(html).toContain('lobby-v4-friends-panel');
     expect(html).toContain('lobby-v4-mode-choice ranked');
     expect(html).toContain('lobby-v4-mode-choice classic');
-    expect(html).toContain('lobby-v4-start');
+    expect(html).toContain('START · Tutorial ready');
     expect(html).toContain('data-ui-action="play-modes"');
     expect(html).toContain('data-ui-action="mail"');
     expect(html).toContain('SHOP');
@@ -40,14 +40,14 @@ describe('mobile-first screen renderers', () => {
     expect(html).toContain('GUILD');
     expect(html).toContain('THE ECLIPSE AWAKENS');
     expect(html).toContain('Online 3/12');
-    expect(html).toContain('[World]');
+    expect(html).toContain('Tap to enter chat...');
+    expect(html).toContain('aria-label="Network"');
     expect(html).toContain('bottom-nav');
     expect(html).toContain('nav-glyph');
-    expect(html).toContain('VAULT');
-    expect(html).toContain('WEAPON');
-    expect(html).toContain('PRESET');
+    expect(html).toContain('PREPARATION');
+    expect(html).toContain('HEROES');
     expect(html).toContain('COLLECTION');
-    expect(html).toContain('LAB');
+    expect(html).toContain('INVENTORY');
     expect(html).not.toContain('<span>H</span>');
     expect(html).not.toContain('quick-strip');
     expect(html).not.toContain('character-standee');

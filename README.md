@@ -55,15 +55,15 @@ The UI has been rebuilt around **one screen = one purpose** instead of one large
 
 - Full-screen 3D Nocturne Garden HQ lobby after the short logo/loading transition
 - Full-screen gothic purple fantasy castle lobby background using image cover cropping, transparent 3D hero overlay, subtle lightning/particle/reflection effects, and UI-safe layering
-- Transparent premium modern 3D/MOBA lobby UI overlay: beveled glass/holographic profile, currencies, utility icons, Shop/Events/Starlight/Missions/Friends/Guild shortcuts, preserved promotional banner, friends panel, chat preview, Ranked/Classic selector, Vault/Weapon/Preset/Collection/Lab bottom nav, and large glowing START button with the center kept clear for the 3D hero
+- Transparent premium AAA mobile multiplayer lobby UI overlay: beveled glass-metal profile, top-center currencies, expanded utility icons, Shop/Events/Starlight/Missions/Friends/Guild side dock, preserved promotional banner, friends panel, chat input, lower-right Ranked/Classic selector, and Preparation/Heroes/Collection/Inventory bottom nav with the center kept clear for the 3D hero
 - Transparent animated 3D lobby layer with selected hero, summoning platform, rune rings, floating crystals, particles, aura, and lighting over the castle background
 - Large selected 3D hero in the center with a procedural hooded dark-coat model, gold trim, animated cloak, weapon glow, shadow orb/pet companion, idle breathing, aura animation, tap reaction, drag rotation, pinch zoom, and double-tap camera reset
 - Shadow-specific lobby treatment with darker lighting/music layer and heavier aura
 - Compact top-left profile with avatar, level, rank, and EXP bar
-- Compact top-right currency, mail badge, and settings controls
-- Rebuilt landscape lobby structure with compact top HUD, angled side dock, right friends panel, small chat strip, bottom navigation, Ranked/Classic mode cards, and a large bottom-right START button
-- START opens a compact STORY / DUNGEON / BOSS / ARENA / EVENT mode overlay
-- Fixed 5-item bottom navigation tuned for the lobby: VAULT / WEAPON / PRESET / COLLECTION / LAB with non-placeholder geometric glyphs
+- Compact top-center currencies plus top-right notifications, stats, friends, mail, settings, network, and systems controls
+- Rebuilt landscape lobby structure with compact top HUD, angled side dock, right friends panel, bottom-left chat input, four-item bottom navigation, and large lower-right Ranked/Classic mode cards where Classic opens START mode selection
+- Classic / Preparation opens a compact STORY / DUNGEON / BOSS / ARENA / EVENT START mode overlay
+- Fixed 4-item bottom navigation tuned for the lobby: PREPARATION / HEROES / COLLECTION / INVENTORY with non-placeholder geometric glyphs
 - Separate character screen with carousel portraits and tabs: Overview, Skills, Equipment, Talents, Stats
 - Separate inventory screen with category tabs and grid items
 - Separate mission screen with Story/Daily/Weekly/Boss/Dungeon/Event tabs
