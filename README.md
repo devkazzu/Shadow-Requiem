@@ -54,6 +54,7 @@ The current implementation is **v0.1.0 — playable prototype / vertical slice**
 The UI has been rebuilt around **one screen = one purpose** instead of one large scrolling dashboard. The current shell now follows mobile action game usability principles:
 
 - Full-screen 3D Nocturne Garden HQ lobby after the short logo/loading transition
+- Full-screen gothic purple fantasy castle lobby background using image cover cropping, transparent 3D hero overlay, subtle lightning/particle/reflection effects, and UI-safe layering
 - Procedural animated HQ scene with moonlit windows, columns, weapon displays, floating crystals, moving NPC silhouettes, particles, fog, and lighting
 - Large selected 3D hero in the center with idle breathing, aura/weapon animation, tap reaction, drag rotation, pinch zoom, and double-tap camera reset
 - Shadow-specific lobby treatment with darker lighting/music layer and heavier aura

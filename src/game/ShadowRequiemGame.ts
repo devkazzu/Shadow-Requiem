@@ -437,8 +437,9 @@ export class ShadowRequiemGame {
     this.scene.fog = new THREE.Fog('#070713', 20, 56);
 
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 100);
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.setClearColor('#070713', 1);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.updateRendererQuality();
@@ -1453,135 +1454,49 @@ export class ShadowRequiemGame {
     this.lobbyParticles = [];
     this.lobbyAnimatedObjects = [];
 
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: '#080816', emissive: '#090021', emissiveIntensity: 0.35, metalness: 0.52, roughness: 0.34 });
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(46, 34), floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    root.add(floor);
-
-    const runway = new THREE.Mesh(new THREE.PlaneGeometry(8, 30), new THREE.MeshBasicMaterial({ color: '#2e1065', transparent: true, opacity: 0.18 }));
-    runway.rotation.x = -Math.PI / 2;
-    runway.position.y = 0.018;
-    root.add(runway);
-
-    const sigilMaterial = new THREE.MeshBasicMaterial({ color: '#8b5cf6', transparent: true, opacity: 0.42, side: THREE.DoubleSide });
-    for (const radius of [2.2, 3.2, 4.25]) {
-      const sigil = new THREE.Mesh(new THREE.RingGeometry(radius, radius + 0.035, 96), sigilMaterial.clone());
-      sigil.rotation.x = -Math.PI / 2;
-      sigil.position.y = 0.04 + radius * 0.002;
-      sigil.userData.spinY = radius % 2 === 0 ? 0.08 : -0.05;
-      root.add(sigil);
-      this.lobbyAnimatedObjects.push(sigil);
+    const reflectionMaterial = new THREE.MeshBasicMaterial({
+      color: '#7c3aed',
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    for (const radius of [1.9, 3.1, 4.35]) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(radius, radius + 0.035, 96), reflectionMaterial.clone());
+      ring.name = 'lobbyForegroundReflection';
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(0, 0.03 + radius * 0.002, 0.12);
+      ring.userData.spinY = radius % 2 === 0 ? 0.08 : -0.055;
+      root.add(ring);
+      this.lobbyAnimatedObjects.push(ring);
     }
 
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: '#0d1022', emissive: '#030617', emissiveIntensity: 0.45, metalness: 0.2, roughness: 0.62 });
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(46, 12, 0.8), wallMaterial);
-    backWall.position.set(0, 6, -15.8);
-    backWall.receiveShadow = true;
-    root.add(backWall);
-
-    const sideWallMaterial = wallMaterial.clone();
-    sideWallMaterial.color = new THREE.Color('#080b1a');
-    for (const x of [-22.5, 22.5]) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 10, 34), sideWallMaterial);
-      sideWall.position.set(x, 5, 0);
-      sideWall.receiveShadow = true;
-      root.add(sideWall);
-    }
-
-    const moonMaterial = new THREE.MeshBasicMaterial({ color: '#dbeafe', transparent: true, opacity: 0.86 });
-    const moon = new THREE.Mesh(new THREE.CircleGeometry(2.9, 48), moonMaterial);
-    moon.position.set(0, 8.6, -15.32);
-    root.add(moon);
-
-    const windowMaterial = new THREE.MeshBasicMaterial({ color: '#60a5fa', transparent: true, opacity: 0.23, side: THREE.DoubleSide });
-    for (const x of [-14, -7, 7, 14]) {
-      const windowPane = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 7.2), windowMaterial.clone());
-      windowPane.position.set(x, 5.8, -15.28);
-      windowPane.userData.pulse = 0.1 + Math.random() * 0.12;
-      root.add(windowPane);
-      this.lobbyAnimatedObjects.push(windowPane);
-    }
-
-    const columnMaterial = new THREE.MeshStandardMaterial({ color: '#111827', emissive: '#170a35', emissiveIntensity: 0.6, metalness: 0.36, roughness: 0.48 });
-    for (const x of [-17.5, -11.5, 11.5, 17.5]) {
-      for (const z of [-10, -2, 7]) {
-        const column = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 8.6, 8), columnMaterial);
-        column.position.set(x, 4.3, z);
-        column.castShadow = true;
-        column.receiveShadow = true;
-        root.add(column);
-        const band = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.03, 8, 32), new THREE.MeshBasicMaterial({ color: '#7c3aed', transparent: true, opacity: 0.55 }));
-        band.position.set(x, 2.2, z);
-        band.rotation.x = Math.PI / 2;
-        band.userData.spinZ = x > 0 ? 0.45 : -0.45;
-        root.add(band);
-        this.lobbyAnimatedObjects.push(band);
-      }
-    }
-
-    const balconyMaterial = new THREE.MeshStandardMaterial({ color: '#0f172a', emissive: '#020617', emissiveIntensity: 0.28, metalness: 0.42, roughness: 0.54 });
-    for (const z of [-11.8, 9.8]) {
-      const balcony = new THREE.Mesh(new THREE.BoxGeometry(38, 0.42, 1.2), balconyMaterial);
-      balcony.position.set(0, 3.15, z);
-      balcony.castShadow = true;
-      balcony.receiveShadow = true;
-      root.add(balcony);
-    }
-
-    const displayMaterial = new THREE.MeshStandardMaterial({ color: '#111124', emissive: '#2e1065', emissiveIntensity: 0.5, metalness: 0.55, roughness: 0.36 });
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 4; i += 1) {
-        const z = -8 + i * 4.2;
-        const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.72, 0.72, 8), displayMaterial);
-        plinth.position.set(side * 8.2, 0.36, z);
-        plinth.castShadow = true;
-        root.add(plinth);
-        const weapon = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.75, 0.08), new THREE.MeshStandardMaterial({ color: '#e0f2fe', emissive: i % 2 ? '#7c3aed' : '#22d3ee', emissiveIntensity: 0.7, metalness: 0.72, roughness: 0.2 }));
-        weapon.position.set(side * 8.2, 1.7, z);
-        weapon.rotation.z = side * 0.3;
-        weapon.userData.floatBaseY = 1.7;
-        weapon.userData.floatAmp = 0.08;
-        weapon.userData.spinY = side * 0.45;
-        root.add(weapon);
-        this.lobbyAnimatedObjects.push(weapon);
-      }
-    }
-
-    const crystalMaterial = new THREE.MeshBasicMaterial({ color: '#a78bfa', transparent: true, opacity: 0.72 });
-    for (let i = 0; i < 7; i += 1) {
-      const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.28 + (i % 3) * 0.08), crystalMaterial.clone());
-      crystal.position.set(-7.5 + i * 2.5, 4.2 + (i % 2) * 0.9, -7 - (i % 3) * 1.4);
-      crystal.userData.floatBaseY = crystal.position.y;
-      crystal.userData.floatAmp = 0.18;
-      crystal.userData.spinY = 0.5 + i * 0.08;
-      root.add(crystal);
-      this.lobbyAnimatedObjects.push(crystal);
-    }
-
-    const npcMaterial = new THREE.MeshToonMaterial({ color: '#111827' });
-    for (let i = 0; i < 8; i += 1) {
-      const npc = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.9, 6), npcMaterial);
-      body.position.y = 0.45;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), npcMaterial);
-      head.position.y = 1.02;
-      npc.add(body, head);
-      npc.position.set(-15 + i * 4.4, 3.55, i % 2 ? 9.8 : -11.8);
-      npc.scale.setScalar(0.75);
-      npc.userData.baseX = npc.position.x;
-      npc.userData.range = 0.8 + (i % 3) * 0.35;
-      npc.userData.speed = 0.24 + i * 0.03;
-      npc.userData.phase = i * 1.7;
-      root.add(npc);
-      this.lobbyAnimatedObjects.push(npc);
-    }
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: '#f43f5e',
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const heroGlow = new THREE.Mesh(new THREE.CircleGeometry(1.55, 72), glowMaterial);
+    heroGlow.name = 'lobbyHeroGroundGlow';
+    heroGlow.rotation.x = -Math.PI / 2;
+    heroGlow.position.y = 0.035;
+    heroGlow.userData.pulse = 0.16;
+    root.add(heroGlow);
+    this.lobbyAnimatedObjects.push(heroGlow);
 
     const particleGeometry = new THREE.SphereGeometry(0.035, 6, 4);
-    for (let i = 0; i < 96; i += 1) {
-      const material = new THREE.MeshBasicMaterial({ color: i % 4 === 0 ? '#f43f5e' : i % 3 === 0 ? '#22d3ee' : '#a78bfa', transparent: true, opacity: 0.36 });
+    for (let i = 0; i < 80; i += 1) {
+      const material = new THREE.MeshBasicMaterial({
+        color: i % 5 === 0 ? '#f43f5e' : i % 3 === 0 ? '#22d3ee' : '#a78bfa',
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false
+      });
       const particle = new THREE.Mesh(particleGeometry, material);
-      particle.position.set((Math.random() - 0.5) * 36, Math.random() * 8 + 0.7, (Math.random() - 0.5) * 25 - 1);
+      particle.name = 'lobbyForegroundParticle';
+      particle.position.set((Math.random() - 0.5) * 12, Math.random() * 5.6 + 0.45, (Math.random() - 0.5) * 4.5 + 0.2);
       particle.userData.baseColor = material.color.getHex();
       particle.userData.seed = Math.random() * Math.PI * 2;
       particle.userData.speed = 0.08 + Math.random() * 0.22;
@@ -1589,18 +1504,17 @@ export class ShadowRequiemGame {
       this.lobbyParticles.push(particle);
     }
 
-    const moonLight = new THREE.DirectionalLight('#c7d2fe', 1.55);
-    moonLight.position.set(-4, 9, 8);
-    moonLight.castShadow = true;
-    root.add(moonLight);
+    const moonFill = new THREE.DirectionalLight('#c7d2fe', 1.2);
+    moonFill.position.set(-2.5, 6.5, 5.5);
+    root.add(moonFill);
 
-    const stageLight = new THREE.SpotLight('#8b5cf6', 95, 25, Math.PI / 5, 0.52, 1.25);
-    stageLight.position.set(0, 8, 5.5);
-    stageLight.target.position.set(0, 1.1, 0);
-    root.add(stageLight, stageLight.target);
+    const heroKey = new THREE.SpotLight('#a78bfa', 72, 16, Math.PI / 5, 0.52, 1.2);
+    heroKey.position.set(0, 6.6, 5.4);
+    heroKey.target.position.set(0, 1.2, 0);
+    root.add(heroKey, heroKey.target);
 
-    const rimLight = new THREE.PointLight('#f43f5e', 28, 15);
-    rimLight.position.set(3.6, 3.2, 1.8);
+    const rimLight = new THREE.PointLight('#f43f5e', 24, 12);
+    rimLight.position.set(3.2, 2.8, 2.1);
     root.add(rimLight);
 
     this.syncLobbyHero();
@@ -2877,11 +2791,21 @@ export class ShadowRequiemGame {
 
   private setSceneMode(mode: 'lobby' | 'arena'): void {
     if (!this.lobbyRoot || !this.arenaRoot) return;
-    this.lobbyRoot.visible = mode === 'lobby';
-    this.arenaRoot.visible = mode === 'arena';
-    this.scene.background = new THREE.Color(mode === 'lobby' && this.profile.activeCharacterId === 'shadow' ? '#03030a' : '#070713');
-    this.scene.fog = new THREE.Fog(mode === 'lobby' && this.profile.activeCharacterId === 'shadow' ? '#020207' : '#070713', mode === 'lobby' ? 18 : 20, mode === 'lobby' ? 64 : 56);
-    if (mode === 'lobby') this.syncLobbyHero();
+    const shell = this.root.querySelector<HTMLElement>('.game-shell');
+    const lobbyActive = mode === 'lobby';
+    this.lobbyRoot.visible = lobbyActive;
+    this.arenaRoot.visible = !lobbyActive;
+    shell?.classList.toggle('lobby-background-active', lobbyActive);
+    if (lobbyActive) {
+      this.scene.background = null;
+      this.scene.fog = null;
+      this.renderer.setClearColor('#000000', 0);
+      this.syncLobbyHero();
+      return;
+    }
+    this.scene.background = new THREE.Color('#070713');
+    this.scene.fog = new THREE.Fog('#070713', 20, 56);
+    this.renderer.setClearColor('#070713', 1);
   }
 
   private setCombatUI(visible: boolean): void {

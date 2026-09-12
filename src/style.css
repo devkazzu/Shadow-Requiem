@@ -3377,3 +3377,136 @@ button:focus-visible,
   border-bottom: 3px solid currentColor;
   transform: rotate(45deg) translate(2px, -2px);
 }
+
+/* Generated gothic castle lobby background: image stays behind transparent 3D hero canvas and all UI. */
+.game-shell::before,
+.game-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.game-shell.lobby-background-active::before {
+  z-index: 0;
+  opacity: 1;
+  background-image:
+    linear-gradient(90deg, rgba(1, 1, 8, 0.54) 0%, rgba(1, 1, 8, 0.08) 24%, rgba(1, 1, 8, 0.06) 58%, rgba(1, 1, 8, 0.52) 100%),
+    linear-gradient(180deg, rgba(2, 2, 10, 0.3) 0%, rgba(2, 2, 10, 0.03) 35%, rgba(2, 2, 10, 0.58) 100%),
+    url('/images/lobby-gothic-castle.png');
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transform: scale(1.012);
+}
+
+.game-shell.lobby-background-active::after {
+  z-index: 1;
+  opacity: 1;
+  background:
+    radial-gradient(circle at 72% 18%, rgba(167, 139, 250, 0.2), transparent 10%),
+    radial-gradient(circle at 16% 24%, rgba(244, 63, 94, 0.12), transparent 14%),
+    linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.08) 46%, transparent 52%);
+  mix-blend-mode: screen;
+  animation: lobbyLightningGlow 7.5s steps(1, end) infinite;
+}
+
+.game-shell.lobby-background-active .scene-host {
+  z-index: 2;
+}
+
+.game-shell.lobby-background-active .scene-host canvas {
+  background: transparent;
+}
+
+.game-shell.lobby-background-active .vignette {
+  z-index: 3;
+  background:
+    radial-gradient(circle at 50% 42%, transparent 0%, transparent 38%, rgba(1, 1, 8, 0.28) 68%, rgba(0, 0, 0, 0.78) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 24%, transparent 55%, rgba(0, 0, 0, 0.46)),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.48), transparent 24%, transparent 74%, rgba(0, 0, 0, 0.54));
+}
+
+.game-shell.lobby-background-active .damage-layer {
+  z-index: 4;
+}
+
+.game-shell.lobby-background-active .overlay {
+  z-index: 20;
+}
+
+.lobby-v2::before,
+.lobby-v2::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lobby-v2::before {
+  z-index: 1;
+  background:
+    radial-gradient(ellipse at 50% 92%, rgba(167, 139, 250, 0.22), transparent 28%),
+    repeating-linear-gradient(100deg, transparent 0 90px, rgba(167, 139, 250, 0.07) 92px, transparent 96px);
+  mix-blend-mode: screen;
+  animation: lobbyWaterReflection 5.8s ease-in-out infinite;
+}
+
+.lobby-v2::after {
+  z-index: 2;
+  background-image:
+    radial-gradient(circle, rgba(233, 213, 255, 0.45) 0 1px, transparent 2px),
+    radial-gradient(circle, rgba(244, 63, 94, 0.32) 0 1px, transparent 2px);
+  background-position: 0 0, 40px 90px;
+  background-size: 120px 140px, 160px 180px;
+  opacity: 0.38;
+  animation: lobbyParticleDrift 14s linear infinite;
+}
+
+.lobby-v2 > * {
+  z-index: 4;
+}
+
+.lobby-v2-mode-panel {
+  z-index: 19;
+}
+
+@keyframes lobbyLightningGlow {
+  0%, 8%, 100% { opacity: 0.42; filter: brightness(1); }
+  9% { opacity: 0.95; filter: brightness(1.65); }
+  10% { opacity: 0.34; filter: brightness(0.9); }
+  12% { opacity: 0.8; filter: brightness(1.35); }
+  13%, 64% { opacity: 0.38; filter: brightness(1); }
+  65% { opacity: 0.74; filter: brightness(1.28); }
+  66% { opacity: 0.36; filter: brightness(0.95); }
+}
+
+@keyframes lobbyWaterReflection {
+  0%, 100% { transform: translateY(0) skewX(-5deg); opacity: 0.34; }
+  50% { transform: translateY(5px) skewX(5deg); opacity: 0.52; }
+}
+
+@keyframes lobbyParticleDrift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-80px, -140px, 0); }
+}
+
+@media (orientation: landscape) {
+  .game-shell.lobby-background-active::before {
+    background-position: center center;
+    background-size: cover;
+  }
+}
+
+@media (max-aspect-ratio: 16 / 9) and (orientation: landscape) {
+  .game-shell.lobby-background-active::before {
+    background-position: center center;
+  }
+}
+
+@media (min-aspect-ratio: 20 / 9) and (orientation: landscape) {
+  .game-shell.lobby-background-active::before {
+    background-position: center center;
+  }
+}

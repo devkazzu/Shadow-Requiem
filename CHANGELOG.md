@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added a full-screen gothic purple fantasy castle lobby background image with CSS cover cropping, transparent Three.js hero canvas, lightning glow, particle drift, and reflective light overlays while keeping lobby UI above it.
 - Rebuilt the main home screen as a transparent full-screen 3D Nocturne Garden HQ lobby with animated environment, interactive center hero, hero switching, compact top HUD, vertical left menu, vertical right event panel, bottom navigation with geometric glyphs, large bottom-right START button, and compact mode-selection overlay.
 - Mobile-first UI rebuild: cinematic lobby, fixed bottom navigation, separate one-purpose screens, tabbed character/inventory/mission/settings panels, battle preparation, full-screen map, More hub, compact popups, and landscape combat HUD adjustments.
 - Independent mobile screen renderers in `src/game/ui/mobileScreens.ts`.
