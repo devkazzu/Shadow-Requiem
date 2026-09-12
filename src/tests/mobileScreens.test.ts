@@ -24,13 +24,23 @@ describe('mobile-first screen renderers', () => {
     });
 
     expect(html).toContain('lobby-home-screen');
-    expect(html).toContain('lobby-v3-left-rail');
-    expect(html).toContain('lobby-v3-friends-panel');
-    expect(html).toContain('lobby-v3-mode-card');
-    expect(html).toContain('lobby-v3-start');
+    expect(html).toContain('lobby-v4');
+    expect(html).toContain('lobby-v4-side-dock');
+    expect(html).toContain('lobby-v4-friends-panel');
+    expect(html).toContain('lobby-v4-mode-choice ranked');
+    expect(html).toContain('lobby-v4-mode-choice classic');
+    expect(html).toContain('lobby-v4-start');
     expect(html).toContain('data-ui-action="play-modes"');
     expect(html).toContain('data-ui-action="mail"');
+    expect(html).toContain('SHOP');
+    expect(html).toContain('EVENTS');
+    expect(html).toContain('STARLIGHT');
+    expect(html).toContain('MISSIONS');
+    expect(html).toContain('FRIENDS');
+    expect(html).toContain('GUILD');
+    expect(html).toContain('THE ECLIPSE AWAKENS');
     expect(html).toContain('Online 3/12');
+    expect(html).toContain('[World]');
     expect(html).toContain('bottom-nav');
     expect(html).toContain('nav-glyph');
     expect(html).toContain('VAULT');
@@ -54,6 +64,7 @@ describe('mobile-first screen renderers', () => {
     });
 
     expect(html).toContain('mode-select-overlay');
+    expect(html).toContain('lobby-v4-mode-overlay');
     expect(html).toContain('STORY');
     expect(html).toContain('data-prepare-mode="dungeon"');
     expect(html).toContain('data-prepare-mode="boss"');

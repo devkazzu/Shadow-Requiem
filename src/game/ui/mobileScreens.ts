@@ -70,35 +70,36 @@ export function renderMainLobby(props: LobbyProps): string {
   return mobileFrame(
     'home',
     `
-      <section class="lobby-layout lobby-v3" aria-label="Nocturne Garden castle lobby">
-        <header class="lobby-v3-top-hud" aria-label="Player and game status">
+      <section class="lobby-layout lobby-v4" aria-label="Nocturne Garden castle lobby">
+        <header class="lobby-v4-top-hud" aria-label="Player and game status">
           ${profileBlock(profile, activeCharacter)}
-          <div class="lobby-v3-resource-row" aria-label="Currencies">
+          <div class="lobby-v4-resource-tray" aria-label="Currencies">
             ${resourceHudPill('gold', profile.gold, 'Gold')}
             ${resourceHudPill('gem', profile.inventory.nullFragment ?? 0, 'Premium currency')}
             ${resourceHudPill('energy', 120, 'Energy')}
           </div>
-          <div class="lobby-v3-system-row" aria-label="Friends, mail and settings">
+          <div class="lobby-v4-utility-tray" aria-label="Friends, mail and settings">
             ${systemButton('Friends', 'more', undefined, 'squad')}
             ${systemButton('Mail', 'mail', 3, 'mail')}
             ${systemButton('Settings', 'settings', undefined, 'settings')}
           </div>
         </header>
 
-        <aside class="lobby-v3-left-rail" aria-label="Lobby shortcuts">
-          ${sideShortcut('SHOP', 'shop', 'shop')}
-          ${sideShortcut('EVENTS', 'play-modes', 'event', 1)}
-          ${sideShortcut('MISSIONS', 'missions', 'missions')}
-          ${sideShortcut('GUILD', 'more', 'guild', 1)}
+        <aside class="lobby-v4-side-dock" aria-label="Lobby shortcuts">
+          ${sideShortcutV4('SHOP', 'shop', 'shop')}
+          ${sideShortcutV4('EVENTS', 'play-modes', 'event', 1)}
+          ${sideShortcutV4('STARLIGHT', 'archive', 'starlight', 1)}
+          ${sideShortcutV4('MISSIONS', 'missions', 'missions')}
+          ${sideShortcutV4('FRIENDS', 'more', 'friends', 1)}
+          ${sideShortcutV4('GUILD', 'more', 'guild')}
         </aside>
 
-        <button class="lobby-v3-promo glass-panel" type="button" data-ui-action="play-modes" aria-label="Open featured event">
-          <span>NEW EVENT</span>
-          <strong>THE ECLIPSE AWAKENS</strong>
-          <small>Limited-time castle rift</small>
+        <button class="lobby-v4-promo holo-edge" type="button" data-ui-action="play-modes" aria-label="Open featured event">
+          <span class="promo-art" aria-hidden="true"></span>
+          <span class="promo-copy"><small>NEW EVENT</small><strong>THE ECLIPSE AWAKENS</strong><b>Limited-time castle rift</b></span>
         </button>
 
-        <aside class="lobby-v3-friends-panel glass-panel" aria-label="Friends panel">
+        <aside class="lobby-v4-friends-panel holo-edge" aria-label="Friends panel">
           <button class="friends-panel-header" type="button" data-ui-action="more"><strong>Friends</strong><span>Online 3/12</span><b aria-hidden="true">⌄</b></button>
           ${friendRow('Aurelia', 'Mythic', 'Online', 'alpha')}
           ${friendRow('Bellatrix', 'Legend', 'In Lobby', 'beta')}
@@ -106,17 +107,17 @@ export function renderMainLobby(props: LobbyProps): string {
           ${friendRow('Zerith', 'Grandmaster', 'Offline', 'zeta', true)}
         </aside>
 
-        <button class="lobby-v3-mode-card glass-panel" type="button" data-ui-action="play-modes" aria-label="Open game mode selector">
-          <span class="mode-emblem" aria-hidden="true"></span>
-          <span><strong>CLASSIC</strong><small>${hasSave ? 'Story / Dungeon / Boss' : 'Tutorial available'}</small></span>
-          <b aria-hidden="true">›</b>
-        </button>
+        <section class="lobby-v4-mode-stack" aria-label="Game mode selector">
+          ${modeChoiceV4('RANKED', 'Arena rank trial', 'data-prepare-mode="arena"', 'ranked')}
+          ${modeChoiceV4('CLASSIC', hasSave ? 'Story / Dungeon / Boss' : 'Tutorial ready', 'data-ui-action="play-modes"', 'classic')}
+        </section>
 
+        <button class="lobby-v4-chat holo-edge" type="button" data-ui-action="more" aria-label="Open social hub from chat preview"><strong>[World]</strong><span>Squad invites and chat channels live in More</span></button>
         ${message ? `<div class="lobby-message glass-panel">${message}</div>` : ''}
-        <button class="lobby-v3-start" type="button" data-ui-action="play-modes" aria-label="Start battle mode selection"><span>START</span><small>${activeCharacter.codename} · ${activeWeapon.name}</small></button>
+        <button class="lobby-v4-start" type="button" data-ui-action="play-modes" aria-label="Start battle mode selection"><span>START</span><small>${activeCharacter.codename} · ${activeWeapon.name}</small></button>
       </section>
     `,
-    'lobby-home-screen lobby-v3-screen'
+    'lobby-home-screen lobby-v4-screen'
   );
 }
 
@@ -125,22 +126,22 @@ export function renderLobbyModeOverlay(props: LobbyProps): string {
   return mobileFrame(
     'home',
     `
-      <section class="lobby-layout lobby-v3 lobby-mode-open" aria-label="Select game mode">
-        <header class="lobby-v3-top-hud" aria-label="Player and game status">
+      <section class="lobby-layout lobby-v4 lobby-mode-open" aria-label="Select game mode">
+        <header class="lobby-v4-top-hud" aria-label="Player and game status">
           ${profileBlock(profile, activeCharacter)}
-          <div class="lobby-v3-resource-row" aria-label="Currencies">
+          <div class="lobby-v4-resource-tray" aria-label="Currencies">
             ${resourceHudPill('gold', profile.gold, 'Gold')}
             ${resourceHudPill('gem', profile.inventory.nullFragment ?? 0, 'Premium currency')}
             ${resourceHudPill('energy', 120, 'Energy')}
           </div>
-          <div class="lobby-v3-system-row" aria-label="Close mode selection">
+          <div class="lobby-v4-utility-tray" aria-label="Close mode selection">
             ${systemButton('Back', 'menu', undefined, 'back')}
           </div>
         </header>
 
-        <section class="mode-select-overlay lobby-v3-mode-overlay glass-panel" aria-label="Game modes">
+        <section class="mode-select-overlay lobby-v4-mode-overlay holo-edge" aria-label="Game modes">
           <div class="mode-select-head">
-            <span class="screen-kicker">BATTLE MODE</span>
+            <span class="screen-kicker">START</span>
             <h2>Select Deployment</h2>
             <button class="back-chip" type="button" data-ui-action="menu">Close</button>
           </div>
@@ -154,7 +155,7 @@ export function renderLobbyModeOverlay(props: LobbyProps): string {
         </section>
       </section>
     `,
-    'lobby-home-screen lobby-v3-screen'
+    'lobby-home-screen lobby-v4-screen'
   );
 }
 
@@ -592,6 +593,14 @@ function eventPanelButton(label: string, copy: string, dataAttrs: string, badge?
 
 function sideShortcut(label: string, action: string, glyph: string, badge?: number): string {
   return `<button class="lobby-v3-side-shortcut" type="button" data-ui-action="${action}" aria-label="${label}"><span class="side-glyph side-glyph-${glyph}" aria-hidden="true"></span><strong>${label}</strong>${badge ? `<i>${badge}</i>` : ''}</button>`;
+}
+
+function sideShortcutV4(label: string, action: string, glyph: string, badge?: number): string {
+  return `<button class="lobby-v4-shortcut" type="button" data-ui-action="${action}" aria-label="${label}"><span class="side-glyph side-glyph-${glyph}" aria-hidden="true"></span><strong>${label}</strong>${badge ? `<i>${badge}</i>` : ''}</button>`;
+}
+
+function modeChoiceV4(title: string, copy: string, dataAttrs: string, tone: 'ranked' | 'classic'): string {
+  return `<button class="lobby-v4-mode-choice ${tone}" type="button" ${dataAttrs} aria-label="${title} mode"><span class="mode-emblem" aria-hidden="true"></span><span><strong>${title}</strong><small>${copy}</small></span><b aria-hidden="true">›</b></button>`;
 }
 
 function friendRow(name: string, rank: string, status: string, characterId: string, muted = false): string {
