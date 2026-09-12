@@ -56,8 +56,8 @@ The UI has been rebuilt around **one screen = one purpose** instead of one large
 - Full-screen 3D Nocturne Garden HQ lobby after the short logo/loading transition
 - Full-screen gothic purple fantasy castle lobby background using image cover cropping, transparent 3D hero overlay, subtle lightning/particle/reflection effects, and UI-safe layering
 - Transparent premium modern 3D/MOBA lobby UI overlay: beveled glass/holographic profile, currencies, utility icons, Shop/Events/Starlight/Missions/Friends/Guild shortcuts, preserved promotional banner, friends panel, chat preview, Ranked/Classic selector, Vault/Weapon/Preset/Collection/Lab bottom nav, and large glowing START button with the center kept clear for the 3D hero
-- Transparent animated 3D lobby layer with selected hero, reflection rings, particles, aura, and lighting over the castle background
-- Large selected 3D hero in the center with idle breathing, aura/weapon animation, tap reaction, drag rotation, pinch zoom, and double-tap camera reset
+- Transparent animated 3D lobby layer with selected hero, summoning platform, rune rings, floating crystals, particles, aura, and lighting over the castle background
+- Large selected 3D hero in the center with a procedural hooded dark-coat model, gold trim, animated cloak, weapon glow, shadow orb/pet companion, idle breathing, aura animation, tap reaction, drag rotation, pinch zoom, and double-tap camera reset
 - Shadow-specific lobby treatment with darker lighting/music layer and heavier aura
 - Compact top-left profile with avatar, level, rank, and EXP bar
 - Compact top-right currency, mail badge, and settings controls

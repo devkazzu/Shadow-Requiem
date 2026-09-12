@@ -1457,6 +1457,69 @@ export class ShadowRequiemGame {
     this.lobbyParticles = [];
     this.lobbyAnimatedObjects = [];
 
+    const platform = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.72, 2.94, 0.12, 96),
+      new THREE.MeshStandardMaterial({
+        color: '#090821',
+        emissive: '#28135d',
+        emissiveIntensity: 0.28,
+        metalness: 0.22,
+        roughness: 0.38,
+        transparent: true,
+        opacity: 0.72
+      })
+    );
+    platform.name = 'lobbySummonPlatform';
+    platform.position.set(0, -0.06, 0);
+    platform.receiveShadow = true;
+    root.add(platform);
+
+    const platformRim = new THREE.Mesh(
+      new THREE.TorusGeometry(2.84, 0.045, 10, 112),
+      new THREE.MeshBasicMaterial({ color: '#60a5fa', transparent: true, opacity: 0.48, depthWrite: false })
+    );
+    platformRim.name = 'lobbyPlatformRim';
+    platformRim.rotation.x = Math.PI / 2;
+    platformRim.position.y = 0.025;
+    platformRim.userData.spinZ = -0.12;
+    root.add(platformRim);
+    this.lobbyAnimatedObjects.push(platformRim);
+
+    const runeMaterial = new THREE.MeshBasicMaterial({ color: '#c084fc', transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false });
+    for (let i = 0; i < 10; i += 1) {
+      const angle = (i / 10) * Math.PI * 2;
+      const rune = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.018, 0.045), runeMaterial.clone());
+      rune.name = 'lobbyFloorRune';
+      rune.position.set(Math.cos(angle) * 2.28, 0.04, Math.sin(angle) * 2.28);
+      rune.rotation.y = -angle;
+      rune.userData.spinY = i % 2 === 0 ? 0.05 : -0.04;
+      root.add(rune);
+      this.lobbyAnimatedObjects.push(rune);
+    }
+
+    const crystalGeometry = new THREE.OctahedronGeometry(0.16, 0);
+    for (let i = 0; i < 9; i += 1) {
+      const material = new THREE.MeshStandardMaterial({
+        color: i % 2 === 0 ? '#38bdf8' : '#a855f7',
+        emissive: i % 2 === 0 ? '#0284c7' : '#7e22ce',
+        emissiveIntensity: 0.85,
+        roughness: 0.18,
+        metalness: 0.18,
+        transparent: true,
+        opacity: 0.78
+      });
+      const crystal = new THREE.Mesh(crystalGeometry, material);
+      const angle = (i / 9) * Math.PI * 2 + 0.22;
+      crystal.name = 'lobbyFloatingShard';
+      crystal.position.set(Math.cos(angle) * (2.8 + (i % 3) * 0.38), 1.05 + (i % 4) * 0.42, Math.sin(angle) * 1.05 - 0.5);
+      crystal.userData.spinY = i % 2 === 0 ? 0.5 : -0.42;
+      crystal.userData.floatBaseY = crystal.position.y;
+      crystal.userData.floatAmp = 0.08 + (i % 3) * 0.025;
+      crystal.userData.phase = i * 0.7;
+      root.add(crystal);
+      this.lobbyAnimatedObjects.push(crystal);
+    }
+
     const reflectionMaterial = new THREE.MeshBasicMaterial({
       color: '#7c3aed',
       transparent: true,
@@ -1527,7 +1590,7 @@ export class ShadowRequiemGame {
     const active = this.getActiveCharacter();
     if (this.lobbyHero?.userData.characterId === active.id) return;
     if (this.lobbyHero?.parent) this.lobbyHero.parent.remove(this.lobbyHero);
-    const hero = this.makePlayerModel();
+    const hero = this.makeLobbyHeroModel(active);
     hero.name = 'LobbyHero';
     hero.userData.characterId = active.id;
     hero.position.set(0, 0, 0);
@@ -1643,8 +1706,37 @@ export class ShadowRequiemGame {
     }
     const cape = this.lobbyHero.getObjectByName('heroCape');
     if (cape) {
-      cape.rotation.x = Math.sin(now * 1.2) * 0.035;
-      cape.position.z = -0.31 + Math.sin(now * 1.5) * 0.015;
+      cape.rotation.x = Math.sin(now * 1.2) * 0.045;
+      cape.rotation.z = Math.sin(now * 0.8) * 0.025;
+      cape.position.z = 0.35 + Math.sin(now * 1.5) * 0.025;
+    }
+    const leftArm = this.lobbyHero.getObjectByName('heroLeftArm');
+    const rightArm = this.lobbyHero.getObjectByName('heroRightArm');
+    if (leftArm) leftArm.rotation.z = Number(leftArm.userData.restRotationZ ?? -0.16) + Math.sin(now * 1.35) * 0.035;
+    if (rightArm) rightArm.rotation.z = Number(rightArm.userData.restRotationZ ?? 0.22) + Math.sin(now * 1.25 + 0.8) * 0.025;
+    const orb = this.lobbyHero.getObjectByName('heroShadowOrb');
+    if (orb) {
+      orb.rotation.y += delta * 1.8;
+      orb.rotation.z -= delta * 1.15;
+      orb.position.y = 1.28 + Math.sin(now * 2.1) * 0.055;
+    }
+    const pet = this.lobbyHero.getObjectByName('heroShadowPet');
+    if (pet) {
+      pet.position.y = 0.32 + Math.sin(now * 2.5) * 0.035;
+      pet.rotation.y = Math.sin(now * 1.1) * 0.16;
+      const petTail = pet.getObjectByName('heroShadowPetTail');
+      if (petTail) petTail.rotation.z = -1.1 + Math.sin(now * 3.2) * 0.22;
+    }
+    const backHalo = this.lobbyHero.getObjectByName('heroBackHalo');
+    if (backHalo) {
+      backHalo.rotation.z += delta * (shadowMode ? -0.18 : -0.08);
+      const pulse = 1 + Math.sin(now * 1.6) * 0.045;
+      backHalo.scale.setScalar(pulse);
+    }
+    for (const eyeName of ['heroEyeLeft', 'heroEyeRight', 'heroShadowPetEyeA', 'heroShadowPetEyeB']) {
+      const eye = this.lobbyHero.getObjectByName(eyeName) as THREE.Mesh | undefined;
+      const material = eye?.material as THREE.MeshBasicMaterial | undefined;
+      if (material) material.opacity = 0.62 + Math.sin(now * 5.2) * 0.2;
     }
     const aura = this.lobbyHero.getObjectByName('heroAura') as THREE.Mesh | undefined;
     if (aura) {
@@ -1809,6 +1901,254 @@ export class ShadowRequiemGame {
       facing: Math.PI,
       stats
     };
+  }
+
+  private makeLobbyHeroModel(active: CharacterData): THREE.Group {
+    const group = new THREE.Group();
+    const visual = active.visuals ?? { primary: '#111124', secondary: '#7c3aed', accent: '#f43f5e' };
+    const shadowMode = active.id === 'shadow';
+    const cloth = new THREE.MeshStandardMaterial({
+      color: visual.primary,
+      emissive: shadowMode ? '#120824' : visual.secondary,
+      emissiveIntensity: shadowMode ? 0.22 : 0.12,
+      roughness: 0.62,
+      metalness: 0.08
+    });
+    const panel = new THREE.MeshStandardMaterial({
+      color: visual.secondary,
+      emissive: visual.secondary,
+      emissiveIntensity: 0.16,
+      roughness: 0.44,
+      metalness: 0.16
+    });
+    const gold = new THREE.MeshStandardMaterial({
+      color: '#f8c86a',
+      emissive: '#9f5b12',
+      emissiveIntensity: 0.35,
+      metalness: 0.82,
+      roughness: 0.18
+    });
+    const skin = new THREE.MeshToonMaterial({ color: shadowMode ? '#d8b59b' : '#e8c7ad' });
+    const voidMaterial = new THREE.MeshBasicMaterial({ color: '#05030d' });
+    const glow = new THREE.MeshBasicMaterial({ color: visual.accent, transparent: true, opacity: shadowMode ? 0.82 : 0.62, depthWrite: false });
+    const glass = new THREE.MeshBasicMaterial({ color: '#c084fc', transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
+
+    const addBox = (name: string, size: [number, number, number], pos: [number, number, number], mat: THREE.Material, rot: [number, number, number] = [0, 0, 0]): THREE.Mesh => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), mat);
+      mesh.name = name;
+      mesh.position.set(pos[0], pos[1], pos[2]);
+      mesh.rotation.set(rot[0], rot[1], rot[2]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      return mesh;
+    };
+    const addCylinder = (name: string, radiusTop: number, radiusBottom: number, height: number, pos: [number, number, number], mat: THREE.Material, rot: [number, number, number] = [0, 0, 0], segments = 10): THREE.Mesh => {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments), mat);
+      mesh.name = name;
+      mesh.position.set(pos[0], pos[1], pos[2]);
+      mesh.rotation.set(rot[0], rot[1], rot[2]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      return mesh;
+    };
+
+    addCylinder('heroLowerRobe', 0.44, 0.72, 1.18, [0, 0.78, 0], cloth, [0, Math.PI / 8, 0], 8);
+    addCylinder('heroTorso', 0.38, 0.48, 1.1, [0, 1.42, -0.02], cloth, [0, Math.PI / 8, 0], 8);
+    addBox('heroChestPlate', [0.6, 0.92, 0.08], [0, 1.55, -0.39], panel, [0.06, 0, 0]);
+    addBox('heroFrontSkirt', [0.34, 0.86, 0.08], [0, 0.83, -0.48], panel, [0.12, 0, 0]);
+
+    addBox('heroGoldTrimLeft', [0.045, 1.48, 0.055], [-0.25, 1.22, -0.54], gold, [0.06, 0, -0.12]);
+    addBox('heroGoldTrimRight', [0.045, 1.48, 0.055], [0.25, 1.22, -0.54], gold, [0.06, 0, 0.12]);
+    addBox('heroBelt', [0.92, 0.07, 0.09], [0, 1.08, -0.49], gold, [0.05, 0, 0]);
+    addBox('heroDiagonalStrapA', [0.05, 1.0, 0.06], [-0.17, 1.56, -0.51], gold, [0.03, 0, -0.55]);
+    addBox('heroDiagonalStrapB', [0.05, 1.0, 0.06], [0.17, 1.56, -0.51], gold, [0.03, 0, 0.55]);
+
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.025, 8, 36), gold);
+    collar.name = 'heroCollarTrim';
+    collar.position.set(0, 1.98, -0.05);
+    collar.rotation.x = Math.PI / 2;
+    collar.scale.set(1.25, 0.62, 1);
+    collar.castShadow = true;
+    group.add(collar);
+
+    const leftShoulder = addBox('heroLeftShoulder', [0.55, 0.13, 0.58], [-0.58, 1.9, -0.02], gold, [0.06, 0.08, 0.2]);
+    leftShoulder.scale.z = 1.1;
+    const rightShoulder = addBox('heroRightShoulder', [0.55, 0.13, 0.58], [0.58, 1.9, -0.02], gold, [0.06, -0.08, -0.2]);
+    rightShoulder.scale.z = 1.1;
+
+    const armMaterial = cloth.clone();
+    const leftArm = addCylinder('heroLeftArm', 0.105, 0.14, 0.98, [-0.66, 1.36, -0.08], armMaterial, [0.12, 0, -0.16], 10);
+    const rightArm = addCylinder('heroRightArm', 0.105, 0.14, 1.0, [0.67, 1.35, -0.06], armMaterial.clone(), [0.08, 0, 0.22], 10);
+    const leftGlove = addBox('heroLeftGlove', [0.2, 0.22, 0.16], [-0.78, 0.92, -0.2], voidMaterial, [0, 0, -0.08]);
+    const rightGlove = addBox('heroRightGlove', [0.2, 0.22, 0.16], [0.8, 0.93, -0.16], voidMaterial, [0, 0, 0.12]);
+    leftArm.userData.restRotationZ = leftArm.rotation.z;
+    rightArm.userData.restRotationZ = rightArm.rotation.z;
+    leftGlove.userData.restY = leftGlove.position.y;
+    rightGlove.userData.restY = rightGlove.position.y;
+
+    addCylinder('heroLeftLeg', 0.105, 0.14, 0.9, [-0.21, 0.35, 0.02], cloth, [0.02, 0, -0.03], 10);
+    addCylinder('heroRightLeg', 0.105, 0.14, 0.9, [0.21, 0.35, 0.02], cloth, [0.02, 0, 0.03], 10);
+    addBox('heroLeftBoot', [0.25, 0.16, 0.43], [-0.22, -0.05, -0.12], voidMaterial, [0, 0.08, 0]);
+    addBox('heroRightBoot', [0.25, 0.16, 0.43], [0.22, -0.05, -0.12], voidMaterial, [0, -0.08, 0]);
+    addBox('heroShinTrimLeft', [0.22, 0.035, 0.08], [-0.21, 0.58, -0.13], gold);
+    addBox('heroShinTrimRight', [0.22, 0.035, 0.08], [0.21, 0.58, -0.13], gold);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 24, 16), skin);
+    head.name = 'heroHead';
+    head.position.set(0, 2.2, -0.1);
+    head.scale.set(0.9, 1.08, 0.82);
+    head.castShadow = true;
+    group.add(head);
+
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.48, 0.62, 5, 1, true), cloth.clone());
+    hood.name = 'heroHood';
+    hood.position.set(0, 2.45, -0.02);
+    hood.rotation.y = Math.PI / 5;
+    hood.scale.set(1.12, 1.0, 0.9);
+    hood.castShadow = true;
+    group.add(hood);
+
+    const hoodBrim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.02, 6, 28), gold);
+    hoodBrim.name = 'heroHoodTrim';
+    hoodBrim.position.set(0, 2.28, -0.21);
+    hoodBrim.rotation.x = Math.PI / 2;
+    hoodBrim.scale.set(1.24, 0.58, 1);
+    group.add(hoodBrim);
+
+    const fringeMaterial = new THREE.MeshToonMaterial({ color: shadowMode ? '#04040b' : '#111827' });
+    for (let i = 0; i < 5; i += 1) {
+      const lock = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.32 + i * 0.025, 5), fringeMaterial);
+      lock.name = 'heroHairLock';
+      lock.position.set(-0.18 + i * 0.09, 2.19 - (i % 2) * 0.03, -0.33);
+      lock.rotation.z = -0.22 + i * 0.11;
+      lock.rotation.x = -0.36;
+      group.add(lock);
+    }
+
+    const eyeLeft = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), glow.clone());
+    eyeLeft.name = 'heroEyeLeft';
+    eyeLeft.position.set(-0.08, 2.22, -0.31);
+    group.add(eyeLeft);
+    const eyeRight = eyeLeft.clone();
+    eyeRight.name = 'heroEyeRight';
+    eyeRight.position.x = 0.08;
+    group.add(eyeRight);
+
+    const cape = new THREE.Group();
+    cape.name = 'heroCape';
+    cape.position.set(0, 1.18, 0.35);
+    const capeMaterial = cloth.clone();
+    capeMaterial.side = THREE.DoubleSide;
+    for (let i = 0; i < 3; i += 1) {
+      const piece = new THREE.Mesh(new THREE.PlaneGeometry(i === 1 ? 0.82 : 0.58, i === 1 ? 1.95 : 1.72), capeMaterial.clone());
+      piece.name = `heroCapePanel${i}`;
+      piece.position.set((i - 1) * 0.38, -0.05 - Math.abs(i - 1) * 0.12, 0.02 * i);
+      piece.rotation.y = (i - 1) * 0.18;
+      piece.rotation.z = (i - 1) * 0.08;
+      piece.castShadow = true;
+      cape.add(piece);
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.035, i === 1 ? 1.85 : 1.58, 0.035), gold);
+      trim.name = `heroCapeTrim${i}`;
+      trim.position.set(piece.position.x + (i - 1) * 0.25, piece.position.y - 0.02, 0.04);
+      trim.rotation.z = (i - 1) * 0.08;
+      cape.add(trim);
+    }
+    group.add(cape);
+
+    const weapon = new THREE.Group();
+    weapon.name = 'heroWeapon';
+    weapon.position.set(0.84, 1.22, -0.12);
+    weapon.rotation.z = -0.38;
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(0.095, 1.62, 0.075),
+      new THREE.MeshStandardMaterial({ color: '#dbeafe', emissive: visual.accent, emissiveIntensity: 0.95, metalness: 0.62, roughness: 0.2 })
+    );
+    blade.name = 'heroWeaponBlade';
+    blade.position.y = 0.38;
+    blade.castShadow = true;
+    weapon.add(blade);
+    const bladeCore = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.48, 0.026), glow.clone());
+    bladeCore.name = 'heroWeaponGlow';
+    bladeCore.position.y = 0.42;
+    weapon.add(bladeCore);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.07, 0.12), gold);
+    guard.name = 'heroWeaponGuard';
+    guard.position.y = -0.35;
+    weapon.add(guard);
+    group.add(weapon);
+
+    const orb = new THREE.Group();
+    orb.name = 'heroShadowOrb';
+    orb.position.set(-0.88, 1.28, -0.28);
+    const orbCore = new THREE.Mesh(new THREE.SphereGeometry(0.17, 24, 16), glow.clone());
+    orbCore.name = 'heroShadowOrbCore';
+    orb.add(orbCore);
+    const orbRingA = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.012, 6, 40), glow.clone());
+    orbRingA.name = 'heroShadowOrbRingA';
+    orbRingA.rotation.x = Math.PI / 2;
+    orb.add(orbRingA);
+    const orbRingB = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.01, 6, 40), glass.clone());
+    orbRingB.name = 'heroShadowOrbRingB';
+    orbRingB.rotation.y = Math.PI / 2;
+    orb.add(orbRingB);
+    group.add(orb);
+
+    if (shadowMode) {
+      const pet = new THREE.Group();
+      pet.name = 'heroShadowPet';
+      pet.position.set(1.02, 0.32, -0.52);
+      const petMaterial = new THREE.MeshBasicMaterial({ color: '#08051a', transparent: true, opacity: 0.92 });
+      const petGlow = new THREE.MeshBasicMaterial({ color: '#a855f7', transparent: true, opacity: 0.72, depthWrite: false });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 12), petMaterial);
+      body.name = 'heroShadowPetBody';
+      body.scale.set(1.4, 0.75, 0.8);
+      pet.add(body);
+      const petHead = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 10), petMaterial.clone());
+      petHead.name = 'heroShadowPetHead';
+      petHead.position.set(-0.25, 0.13, -0.08);
+      petHead.scale.set(0.9, 0.9, 1.1);
+      pet.add(petHead);
+      for (const side of [-1, 1]) {
+        const ear = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.2, 5), petMaterial.clone());
+        ear.name = 'heroShadowPetEar';
+        ear.position.set(-0.28, 0.29, side * 0.08);
+        ear.rotation.z = side * 0.35;
+        pet.add(ear);
+      }
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.52, 7), petGlow);
+      tail.name = 'heroShadowPetTail';
+      tail.position.set(0.34, 0.14, 0.04);
+      tail.rotation.z = -1.1;
+      pet.add(tail);
+      const petEyeA = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), glow.clone());
+      petEyeA.name = 'heroShadowPetEyeA';
+      petEyeA.position.set(-0.39, 0.16, -0.12);
+      pet.add(petEyeA);
+      const petEyeB = petEyeA.clone();
+      petEyeB.name = 'heroShadowPetEyeB';
+      petEyeB.position.z = 0.01;
+      pet.add(petEyeB);
+      group.add(pet);
+    }
+
+    const aura = new THREE.Mesh(
+      new THREE.TorusGeometry(1.05, 0.024, 8, 72),
+      new THREE.MeshBasicMaterial({ color: visual.accent, transparent: true, opacity: shadowMode ? 0.75 : 0.54, depthWrite: false })
+    );
+    aura.name = 'heroAura';
+    aura.rotation.x = Math.PI / 2;
+    aura.position.y = 0.08;
+    group.add(aura);
+
+    const backAura = new THREE.Mesh(new THREE.CircleGeometry(1.05, 64), glass.clone());
+    backAura.name = 'heroBackHalo';
+    backAura.position.set(0, 1.42, 0.2);
+    backAura.rotation.y = Math.PI;
+    group.add(backAura);
+
+    return group;
   }
 
   private makePlayerModel(): THREE.Group {
