@@ -1,0 +1,9 @@
+{
+  "id": "eclipse-cleaver",
+  "name": "Eclipse Cleaver",
+  "category": "Greatsword",
+  "rarity": "Epic",
+  "attackBonus": 18,
+  "passive": "Boss and mini-boss hits deal 8% bonus damage.",
+  "unlockCost": { "eclipseCore": 1, "shadowShard": 8 }
+}

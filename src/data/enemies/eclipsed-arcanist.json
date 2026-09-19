@@ -1,0 +1,16 @@
+{
+  "id": "eclipsed-arcanist",
+  "displayName": "Eclipsed Arcanist",
+  "archetype": "Ranged",
+  "maxHealth": 95,
+  "attack": 16,
+  "defense": 2,
+  "speed": 3.2,
+  "radius": 0.65,
+  "staggerMax": 34,
+  "xpReward": 18,
+  "goldReward": 14,
+  "color": "#38bdf8",
+  "aiStyle": "ranged",
+  "description": "A ranged mage that kites the player and fires unstable magic bolts."
+}

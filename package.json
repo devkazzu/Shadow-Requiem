@@ -1,0 +1,30 @@
+{
+  "name": "shadow-requiem",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Android-first dark anime action RPG vertical slice built as a web/Capacitor MVP.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "android:prepare": "npm run build && node scripts/prepare-android.mjs",
+    "android:sync": "cap sync android",
+    "android:debug": "npm run android:prepare && cd android && ./gradlew assembleDebug",
+    "android:release": "npm run android:prepare && cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.0",
+    "@capacitor/core": "8.5.2",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "@types/three": "0.185.4",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.0"
+  }
+}

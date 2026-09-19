@@ -1,0 +1,72 @@
+{
+  "id": "awakening",
+  "chapter": "Chapter 1 \u2014 The Awakening",
+  "title": "Every Legend Begins in Darkness",
+  "recommendedLevel": 1,
+  "difficulty": "Normal",
+  "narrative": "Noctis wakes inside a sealed underground arena. A voice from the Eclipse Order calls him an experiment. He answers by becoming the shadow they failed to control.",
+  "rewards": {
+    "xp": 160,
+    "gold": 140,
+    "skillPoints": 1,
+    "materials": {
+      "shadowShard": 6,
+      "eclipseCore": 1,
+      "trainingSigil": 2
+    }
+  },
+  "nextMission": "shadow-trace",
+  "steps": [
+    {
+      "type": "waypoint",
+      "objective": "Move to the obsidian waypoint and awaken the arena.",
+      "marker": {
+        "x": 0,
+        "z": -7
+      }
+    },
+    {
+      "type": "wave",
+      "objective": "Defeat the three Eclipse training echoes.",
+      "spawns": [
+        {
+          "enemyId": "shadow-cultist",
+          "x": -4,
+          "z": -8
+        },
+        {
+          "enemyId": "eclipsed-arcanist",
+          "x": 4,
+          "z": -9
+        },
+        {
+          "enemyId": "null-guard",
+          "x": 0,
+          "z": -12
+        }
+      ]
+    },
+    {
+      "type": "wave",
+      "objective": "Break the Abyss Knight Initiate.",
+      "spawns": [
+        {
+          "enemyId": "abyss-knight-initiate",
+          "x": 0,
+          "z": -13
+        }
+      ]
+    },
+    {
+      "type": "wave",
+      "objective": "Defeat the Eclipse Warden and escape the chamber.",
+      "spawns": [
+        {
+          "enemyId": "eclipse-warden",
+          "x": 0,
+          "z": -15
+        }
+      ]
+    }
+  ]
+}

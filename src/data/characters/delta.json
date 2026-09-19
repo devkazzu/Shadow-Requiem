@@ -1,0 +1,65 @@
+{
+  "id": "delta",
+  "displayName": "Delyra Fang",
+  "codename": "DELTA",
+  "title": "Wild Fang of the Garden",
+  "rarity": "Legendary",
+  "role": "Berserker / Melee DPS",
+  "visuals": {
+    "primary": "#451a03",
+    "secondary": "#f97316",
+    "accent": "#ef4444"
+  },
+  "baseStats": {
+    "maxHealth": 470,
+    "attack": 52,
+    "defense": 10,
+    "speed": 7.6,
+    "critChance": 0.06,
+    "shadowGainMultiplier": 0.86
+  },
+  "skills": [
+    {
+      "id": "delta-cleave",
+      "name": "Feral Cleave",
+      "slot": 1,
+      "cooldown": 4.8,
+      "damageMultiplier": 2.35,
+      "radius": 3.6,
+      "range": 4,
+      "shadowGain": 11,
+      "description": "A heavy wild slash with high knockback."
+    },
+    {
+      "id": "ground-breaker",
+      "name": "Ground Breaker",
+      "slot": 2,
+      "cooldown": 8.0,
+      "damageMultiplier": 2.0,
+      "radius": 5.0,
+      "range": 0,
+      "shadowGain": 13,
+      "description": "Smash the arena floor and stagger enemies."
+    },
+    {
+      "id": "hunt-instinct",
+      "name": "Hunt Instinct",
+      "slot": 3,
+      "cooldown": 10.5,
+      "damageMultiplier": 1.2,
+      "radius": 4.0,
+      "range": 7,
+      "shadowGain": 12,
+      "description": "Leap toward the weakest target and enter rage flow."
+    }
+  ],
+  "ultimate": {
+    "id": "meteor-fang",
+    "name": "Meteor Fang",
+    "cooldown": 19,
+    "damageMultiplier": 6.1,
+    "radius": 18,
+    "line": "Found you. Breaking you now.",
+    "description": "A brutal aerial slam that detonates on landing."
+  }
+}

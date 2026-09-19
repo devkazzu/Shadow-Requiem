@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+.vite/
+
+# Test/cache outputs
+.cache/
+.local/
+*.log
+
+# Capacitor/Android generated secrets and local state
+android/local.properties
+android/.gradle/
+android/**/build/
+android/release.keystore
+*.jks
+*.keystore
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.pyc

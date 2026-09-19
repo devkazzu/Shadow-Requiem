@@ -1,0 +1,9 @@
+{
+  "id": "null-requiem",
+  "name": "Null Requiem",
+  "category": "Magic weapon",
+  "rarity": "Shadow-tier",
+  "attackBonus": 34,
+  "passive": "Ultimate damage increased and Shadow Power gain improved.",
+  "unlockCost": { "nullFragment": 2, "eclipseCore": 3, "shadowShard": 18 }
+}

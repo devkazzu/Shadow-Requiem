@@ -1,0 +1,16 @@
+{
+  "id": "null-guard",
+  "displayName": "Null Guard",
+  "archetype": "Tank",
+  "maxHealth": 210,
+  "attack": 27,
+  "defense": 11,
+  "speed": 2.4,
+  "radius": 1.05,
+  "staggerMax": 72,
+  "xpReward": 28,
+  "goldReward": 22,
+  "color": "#ef4444",
+  "aiStyle": "tank",
+  "description": "A heavily armored guard with slow but punishing overhead strikes."
+}

@@ -1,0 +1,62 @@
+{
+  "id": "shadow",
+  "displayName": "Noctis Veyr",
+  "codename": "SHADOW",
+  "title": "The One Behind the Requiem",
+  "rarity": "Shadow-tier",
+  "role": "Sword DPS / Shadow Magic",
+  "baseStats": {
+    "maxHealth": 420,
+    "attack": 48,
+    "defense": 12,
+    "speed": 7.2,
+    "critChance": 0.08,
+    "shadowGainMultiplier": 1
+  },
+  "visuals": { "primary": "#111124", "secondary": "#7c3aed", "accent": "#f43f5e" },
+  "skills": [
+    {
+      "id": "shadow-step",
+      "name": "Shadow Step",
+      "slot": 1,
+      "cooldown": 4.5,
+      "damageMultiplier": 2.25,
+      "radius": 2.8,
+      "range": 9,
+      "shadowGain": 10,
+      "description": "Teleport through the nearest enemy and carve a crescent of dark energy."
+    },
+    {
+      "id": "umbral-bloom",
+      "name": "Umbral Bloom",
+      "slot": 2,
+      "cooldown": 7.5,
+      "damageMultiplier": 1.65,
+      "radius": 5,
+      "range": 5,
+      "shadowGain": 14,
+      "description": "Detonate shadow particles around the protagonist, staggering nearby enemies."
+    },
+    {
+      "id": "nocturne-barrier",
+      "name": "Nocturne Barrier",
+      "slot": 3,
+      "cooldown": 11,
+      "damageMultiplier": 0.75,
+      "radius": 3.6,
+      "range": 0,
+      "duration": 4,
+      "shadowGain": 8,
+      "description": "Create a dark barrier that reduces incoming damage and pulses at close range."
+    }
+  ],
+  "ultimate": {
+    "id": "eclipse-requiem",
+    "name": "Eclipse Requiem",
+    "cooldown": 18,
+    "damageMultiplier": 6.5,
+    "radius": 24,
+    "line": "The battlefield will remember only silence.",
+    "description": "A cinematic battlefield-clearing dark-energy execution."
+  }
+}

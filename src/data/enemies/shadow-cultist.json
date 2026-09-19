@@ -1,0 +1,16 @@
+{
+  "id": "shadow-cultist",
+  "displayName": "Eclipse Cultist",
+  "archetype": "Melee",
+  "maxHealth": 120,
+  "attack": 18,
+  "defense": 4,
+  "speed": 3.8,
+  "radius": 0.75,
+  "staggerMax": 42,
+  "xpReward": 16,
+  "goldReward": 12,
+  "color": "#8b5cf6",
+  "aiStyle": "melee",
+  "description": "A fast melee attacker that pressures the player with short lunges."
+}

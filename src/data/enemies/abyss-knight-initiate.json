@@ -1,0 +1,16 @@
+{
+  "id": "abyss-knight-initiate",
+  "displayName": "Abyss Knight Initiate",
+  "archetype": "Mini-Boss",
+  "maxHealth": 520,
+  "attack": 34,
+  "defense": 13,
+  "speed": 3.2,
+  "radius": 1.25,
+  "staggerMax": 120,
+  "xpReward": 90,
+  "goldReward": 80,
+  "color": "#f43f5e",
+  "aiStyle": "miniboss",
+  "description": "A mini-boss that alternates blade pressure with a charging execution slash."
+}
